@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "contracts/fungible",
+
+    "contracts/wrapped-asset",
+    "contracts/pricefeed",
+    "contracts/core/vault-pricefeed",
+    "contracts/core/vault",
+    "contracts/core/vault-storage",
+    "contracts/core/router",
+    "contracts/core/shorts-tracker",
+    "contracts/core/base-position-manager",
+    "contracts/core/orderbook",
+    "contracts/core/position-router",
+    "contracts/core/position-manager",
+    "contracts/core/glp-manager",
+
+    "contracts/peripherals/balance-updater",
+    "contracts/peripherals/vault-reader",
+    "contracts/peripherals/orderbook-reader",
+    "contracts/peripherals/position-router-reader",
+    "contracts/peripherals/timelock",
+
+    "contracts/referrals/referral_storage",
+    "contracts/referrals/referral_reader",
+
+    "contracts/assets/yield-tracker",
+    "contracts/assets/yield-asset",
+    "contracts/assets/usdg",
+    "contracts/assets/time-distributor",
+    "contracts/assets/glp",
+    "contracts/assets/gmx",
+
+    "contracts/testable/utils",
+]
