@@ -10,20 +10,9 @@ contract;
 */
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
 use std::hash::*;
 use peripheral_interfaces::position_router_reader::PositionRouterReader;
@@ -53,7 +42,7 @@ impl PositionRouterReader for Contract {
         Vec<u64>, 
         Vec<AssetId>
     ) {
-        let position_router = abi(PositionRouter, position_router_.value);
+        let position_router = abi(PositionRouter, position_router_.into());
         let mut end_index = end_index_;
 
         // increasePositionRequestKeysStart,
@@ -87,5 +76,4 @@ impl PositionRouterReader for Contract {
 
         (request_indices, transfer_assets)
     }
-
 }

@@ -11,9 +11,9 @@ abi BasePositionManager {
     fn initialize(
         gov: Account,
         vault: ContractId,
-        vault_storage: ContractId,
         router: ContractId,
         shorts_tracker: ContractId,
+        referral_storage: ContractId,
         deposit_fee: u64
     );
 
@@ -26,6 +26,9 @@ abi BasePositionManager {
     */
     #[storage(read, write)]
     fn set_gov(new_gov: Account);
+
+    #[storage(read, write)]
+    fn register_child(child: ContractId);
     
     #[storage(read, write)]
     fn set_deposit_fee(deposit_fee: u64);
@@ -51,11 +54,24 @@ abi BasePositionManager {
         receiver: Account 
     );
 
+    /*
+          ____ __     ___               
+         / / / \ \   / (_) _____      __
+        / / /   \ \ / /| |/ _ \ \ /\ / /
+       / / /     \ V / | |  __/\ V  V / 
+      /_/_/       \_/  |_|\___| \_/\_/  
+    */
+    #[storage(read)]
+    fn get_referral_storage() -> ContractId;
+
     #[storage(read)]
     fn get_max_global_long_sizes(asset: AssetId) -> u256;
 
     #[storage(read)]
     fn get_max_global_short_sizes(asset: AssetId) -> u256;
+
+    #[storage(read)]
+    fn get_fee_reserves(asset: AssetId) -> u64;
 
     /*
           ____  ____        _     _ _      
@@ -67,7 +83,7 @@ abi BasePositionManager {
     #[payable]
     #[storage(read, write)]
     fn collect_fees(
-        account: Address,
+        account: Account,
         path: Vec<AssetId>,
         amount_in: u64,
         index_asset: AssetId,
@@ -78,7 +94,7 @@ abi BasePositionManager {
     #[payable]
     #[storage(read)]
     fn increase_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         size_delta: u256,
@@ -89,7 +105,7 @@ abi BasePositionManager {
     #[payable]
     #[storage(read)]
     fn decrease_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         collateral_delta: u256,

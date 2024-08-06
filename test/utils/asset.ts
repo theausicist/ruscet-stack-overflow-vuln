@@ -1,16 +1,17 @@
-import { getAssetId as getAssetIdFuels } from "fuels"
+import { getMintedAssetId } from "fuels"
 import { FungibleAbi } from "../../types"
 import { Account } from "./types"
 
 export function toAsset(value: any) {
-    return { value: getAssetId(value) }
+    return { bits: getAssetId(value) }
 }
 
 export function getAssetId(
     fungibleContract: any,
     sub_id: string = "0x0000000000000000000000000000000000000000000000000000000000000000",
 ): string {
-    return getAssetIdFuels(fungibleContract.id.toHexString(), sub_id)
+    const id = typeof fungibleContract === "string" ? fungibleContract : fungibleContract.id.toHexString()
+    return getMintedAssetId(id, sub_id)
 }
 
 export async function transfer(fungibleContract: FungibleAbi, to: Account, amount: number | string) {

@@ -16,15 +16,15 @@ abi VaultReader {
     */
     fn get_vault_asset_info_v3(
         vault: ContractId,
-        position_manager: ContractId,
-        usdg_amount: u256,
+        position_manager_or_router: ContractId,
+        rusd_amount: u256,
         assets: Vec<AssetId>
     ) -> Vec<u256>;
 
     fn get_vault_asset_info_v4(
         vault: ContractId,
-        position_manager: ContractId,
-        usdg_amount: u256,
+        position_manager_or_router: ContractId,
+        rusd_amount: u256,
         assets: Vec<AssetId>
     ) -> Vec<u256>;
 } 

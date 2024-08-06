@@ -3,6 +3,10 @@ import { FungibleAbi, UtilsAbi } from "../../types"
 import { getAssetId, toAsset } from "./asset"
 import { Contract } from "ethers"
 import { toContract } from "./account"
+import fs from "fs"
+import path from "path"
+
+const INDEXER_CONTRACT_DEPLOYMENTS = path.resolve(__dirname, "../indexer/indexer_deployments.json")
 
 export async function deploy(contract: string, wallet: WalletUnlocked) {
     const bytecode = require(`../../types/${contract}Abi.hex`).default
@@ -11,6 +15,32 @@ export async function deploy(contract: string, wallet: WalletUnlocked) {
         throw new Error(`Could not find factory for contract ${contract}`)
     }
     return await factory.deployContract(bytecode, wallet)
+}
+
+export async function indexerDeploy(
+    contract: string,
+    wallet: WalletUnlocked,
+    saveName: string | undefined = undefined,
+    forceDeploy = false,
+) {
+    const bytecode = require(`../../types/${contract}Abi.hex`).default
+    const factory = require(`../../types/factories/${contract}Abi__factory`)[`${contract}Abi__factory`]
+    if (!factory) {
+        throw new Error(`Could not find factory for contract ${contract}`)
+    }
+
+    const deployments = JSON.parse(fs.readFileSync(INDEXER_CONTRACT_DEPLOYMENTS).toString())
+    if (deployments[saveName ?? contract] && !forceDeploy) {
+        console.log(">>> Using existing deployment for", saveName ?? contract)
+        return await factory.connect(deployments[saveName ?? contract], wallet)
+    }
+
+    const contr = await factory.deployContract(bytecode, wallet)
+
+    deployments[saveName ?? contract] = contr.id.toB256()
+    fs.writeFileSync(INDEXER_CONTRACT_DEPLOYMENTS, JSON.stringify(deployments, null, 4))
+
+    return contr
 }
 
 export function formatComplexObject(obj: any, depth = 2) {
@@ -54,7 +84,7 @@ export async function getBalance(
     }
 
     if (typeof fungibleAsset === "string") {
-        return (await utils.functions.get_contr_balance(toContract(account), { value: fungibleAsset }).call()).value.toString()
+        return (await utils.functions.get_contr_balance(toContract(account), { bits: fungibleAsset }).call()).value.toString()
     }
 
     return (await utils.functions.get_contr_balance(toContract(account), toAsset(fungibleAsset)).call()).value.toString()

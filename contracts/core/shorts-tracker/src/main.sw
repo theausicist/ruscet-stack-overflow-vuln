@@ -11,26 +11,16 @@ contract;
 
 mod errors;
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
 use std::hash::*;
 use core_interfaces::{
     shorts_tracker::ShortsTracker,
     vault::Vault,
-    vault_storage::VaultStorage
+    vault_storage::VaultStorage,
+    vault_utils::VaultUtils,
 };
 use helpers::{
     context::*, 
@@ -48,10 +38,9 @@ storage {
     is_global_short_data_ready: bool = false,
     
     vault: ContractId = ZERO_CONTRACT,
-    vault_storage: ContractId = ZERO_CONTRACT,
 
-    data: StorageMap<b256, b256> = StorageMap::<b256, b256> {},
-    is_handler: StorageMap<Address, bool> = StorageMap::<Address, bool> {},
+    // data: StorageMap<b256, b256> = StorageMap::<b256, b256> {},
+    is_handler: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
     global_short_average_prices: StorageMap<AssetId, u256> = StorageMap::<AssetId, u256> {},
 }
 
@@ -64,17 +53,13 @@ struct GlobalShortDataUpdated {
 
 impl ShortsTracker for Contract {
     #[storage(read, write)]
-    fn initialize(
-        vault: ContractId, 
-        vault_storage: ContractId
-    ) {
+    fn initialize(vault: ContractId) {
         require(!storage.is_initialized.read(), Error::ShortsTrackerAlreadyInitialized);
         require(vault.non_zero(), Error::ShortsTrackerVaultZero);
+        
         storage.is_initialized.write(true);
         storage.gov.write(get_sender());
-
         storage.vault.write(vault);
-        storage.vault_storage.write(vault_storage);
     }
 
     /*
@@ -85,16 +70,16 @@ impl ShortsTracker for Contract {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(read, write)]
-    fn set_handler(handler: Address, is_active: bool) {
+    fn set_handler(handler: Account, is_active: bool) {
         _only_gov();
 
-        require(handler != ZERO_ADDRESS, Error::ShortsTrackerHandlerZero);
+        require(handler.non_zero(), Error::ShortsTrackerHandlerZero);
         storage.is_handler.insert(handler, is_active);
     }
 
     #[storage(read, write)]
     fn update_global_short_data(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         is_long: bool,
@@ -113,7 +98,7 @@ impl ShortsTracker for Contract {
         }
 
         let (global_short_size, global_short_average_price) = _get_next_global_short_data(
-            Account::from(account),
+            account,
             collateral_asset,
             index_asset,
             mark_price,
@@ -122,6 +107,12 @@ impl ShortsTracker for Contract {
         );
 
         storage.global_short_average_prices.insert(index_asset, global_short_average_price);
+
+        log(GlobalShortDataUpdated {
+            asset: index_asset,
+            global_short_size,
+            global_short_average_price
+        });
     }
 
     #[storage(read, write)]
@@ -181,7 +172,6 @@ impl ShortsTracker for Contract {
         )
     }
 
-    #[storage(read)]
     fn get_next_global_average_price(
         average_price: u256,
         next_price: u256,
@@ -198,7 +188,6 @@ impl ShortsTracker for Contract {
         )
     }
 
-    #[storage(read)]
     fn get_next_delta(
         delta: u256,
         average_price: u256,
@@ -247,8 +236,8 @@ fn _only_gov() {
 #[storage(read)]
 fn _only_handler() {
     require(
-        storage.is_handler.get(get_address_or_revert())
-            .try_read().is_some(),
+        storage.is_handler.get(get_sender())
+            .try_read().unwrap_or(false),
         Error::ShortsTrackerForbidden
     );
 }
@@ -277,8 +266,9 @@ fn _get_next_global_short_data(
         next_price - avg_price 
     };
 
-    let vault_storage = abi(VaultStorage, storage.vault_storage.read().value);
-    let size = vault_storage.get_global_short_sizes(index_asset);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
+    let size = vault_utils.get_global_short_sizes(index_asset);
 
     let next_size = if is_increase { size + size_delta } else { size - size_delta };
 
@@ -303,7 +293,6 @@ fn _get_next_global_short_data(
     (next_size, next_average_price)
 }
 
-#[storage(read)]
 fn _get_next_global_average_price(
     average_price: u256,
     next_price: u256,
@@ -324,9 +313,9 @@ fn _get_next_global_average_price(
     next_average_price
 }
 
-#[storage(read)]
+
 fn _get_next_delta(
-    delta: u256,
+    delta_: u256,
     average_price: u256,
     next_price: u256,
     realized_pnl: Signed256
@@ -340,7 +329,8 @@ fn _get_next_delta(
     
     let mut has_profit = average_price > next_price;
 
-    let mut delta: u256 = 0;
+    // @TODO: check this (delta)
+    let mut delta: u256 = delta_;
     let value = realized_pnl.value;
     
     if has_profit {
@@ -386,20 +376,21 @@ fn _get_realized_pnl(
         return Signed256::from(0);
     }
 
-    let vault = abi(Vault, storage.vault.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
 
     let (
         size, _collateral, average_price, 
         _, _, _, _, 
-        last_increased_time, _
-    ) = vault.get_position(
-        Address::from(account.value),
+        last_increased_time
+    ) = vault_utils.get_position(
+        account,
         collateral_asset,
         index_asset,
         false
     );
 
-    let (has_profit, delta) = vault.get_delta(
+    let (has_profit, delta) = vault_utils.get_delta(
         index_asset,
         size,
         average_price,

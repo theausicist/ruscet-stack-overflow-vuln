@@ -43,9 +43,9 @@ export function toIdentity(addr: any, is_contract: boolean): Identity {
 }
 
 export function toAddress(value: any): Address {
-    return { value: toAccount(value, false).value }
+    return { bits: toAccount(value, false).value }
 }
 
 export function toContract(value: any): ContractId {
-    return { value: toAccount(value, true).value }
+    return { bits: toAccount(value, true).value }
 }

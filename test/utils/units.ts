@@ -20,9 +20,9 @@ export function toNormalizedPrice(value: number): string {
     return toUsd(value)
 }
 
-export function toPrice(value: number): string {
+export function toPrice(value: number, decimals: number = 8): string {
     // console.log("[toPrice] Value:", parseInt((value * Math.pow(10, 8)) as any).toString())
-    return parseInt((value * Math.pow(10, 8)) as any).toString()
+    return parseInt((value * Math.pow(10, decimals)) as any).toString()
 }
 
 export function expandDecimals(num: string | number, decimals: number = 8): string {

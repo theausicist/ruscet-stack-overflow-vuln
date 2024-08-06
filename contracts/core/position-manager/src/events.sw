@@ -1,25 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 library;
 
+use helpers::{
+    context::*,
+};
+
 pub struct SetOrderKeeper {
-    account: Address,
-    is_active: bool,
+    pub account: Account,
+    pub is_active: bool,
 }
 
 pub struct SetLiquidator {
-    account: Address,
-    is_active: bool,
+    pub account: Account,
+    pub is_active: bool,
 }
 
 pub struct SetPartner {
-    account: Address,
-    is_active: bool,
+    pub account: Account,
+    pub is_active: bool,
 }
 
 pub struct SetInLegacyMode {
-    in_legacy_mode: bool,
+    pub in_legacy_mode: bool,
 }
 
 pub struct SetShouldValidatorIncreaseOrder {
-    should_validator_increase_order: bool,
+    pub should_validator_increase_order: bool,
 }

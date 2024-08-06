@@ -2,7 +2,7 @@
 authors = ["@jasmcaus", "@xburralabs"]
 entry = "main.sw"
 license = "Apache-2.0"
-name = "shorts_tracker"
+name = "shorts-tracker"
 
 [dependencies]
 helpers = { path = "../../helpers" }

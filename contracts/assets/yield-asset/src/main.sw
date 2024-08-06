@@ -67,11 +67,11 @@ impl YieldAsset for Contract {
             !storage.is_initialized.read(), 
             Error::YieldAssetAlreadyInitialized
         );
+        storage.is_initialized.write(true);
 
         storage.name.write_slice(name);
         storage.symbol.write_slice(symbol);
         
-        storage.is_initialized.write(true);
         storage.gov.write(get_sender());
         storage.admins.insert(get_sender(), true);
         _mint(get_sender(), initial_supply);
@@ -175,7 +175,7 @@ impl YieldAsset for Contract {
         let mut i = 0;
         while i < storage.yield_trackers.len() {
             let yield_tracker = storage.yield_trackers.get(i).unwrap().read();
-            abi(YieldTracker, yield_tracker.value).claim(account, receiver);
+            abi(YieldTracker, yield_tracker.into()).claim(account, receiver);
             i += 1;
         }
     }
@@ -186,7 +186,7 @@ impl YieldAsset for Contract {
         let mut i = 0;
         while i < storage.yield_trackers.len() {
             let yield_tracker = storage.yield_trackers.get(i).unwrap().read();
-            abi(YieldTracker, yield_tracker.value).claim(get_sender(), receiver);
+            abi(YieldTracker, yield_tracker.into()).claim(get_sender(), receiver);
             i += 1;
         }
     }
@@ -199,7 +199,7 @@ impl YieldAsset for Contract {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     fn get_id() -> AssetId {
-        AssetId::new(contract_id(), ZERO)
+        AssetId::new(ContractId::this(), ZERO)
     }
 
     #[storage(read)]
@@ -336,7 +336,7 @@ fn _burn(
     require(account != ZERO_ACCOUNT, Error::YieldAssetBurnFromZeroAccount);
 
     require(
-        msg_asset_id() == AssetId::new(contract_id(), ZERO),
+        msg_asset_id() == AssetId::new(ContractId::this(), ZERO),
         Error::YieldAssetInvalidBurnAssetForwarded
     );
     require(
@@ -408,7 +408,11 @@ fn _transfer(
         );
     }
 
-    transfer(account_to_identity(recipient), msg_asset_id(), amount);
+    transfer_assets(
+        msg_asset_id(),
+        recipient,
+        amount
+    );
 }
 
 #[storage(read, write)]
@@ -428,7 +432,7 @@ fn _update_rewards(account: Account) {
     let mut i = 0;
     while i < storage.yield_trackers.len() {
         let yield_tracker = storage.yield_trackers.get(i).unwrap().read();
-        abi(YieldTracker, yield_tracker.value).update_rewards(account);
+        abi(YieldTracker, yield_tracker.into()).update_rewards(account);
         i += 1;
     }
 }

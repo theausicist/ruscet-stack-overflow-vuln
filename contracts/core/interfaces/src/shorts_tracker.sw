@@ -8,10 +8,7 @@ use helpers::{
 
 abi ShortsTracker {
     #[storage(read, write)]
-    fn initialize(
-        vault: ContractId, 
-        vault_storage: ContractId
-    );
+    fn initialize(vault: ContractId);
 
     /*
           ____     _       _           _       
@@ -21,11 +18,11 @@ abi ShortsTracker {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(read, write)]
-    fn set_handler(handler: Address, is_active: bool);
+    fn set_handler(handler: Account, is_active: bool);
 
     #[storage(read, write)]
     fn update_global_short_data(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         is_long: bool,
@@ -63,7 +60,6 @@ abi ShortsTracker {
         is_increase: bool
     ) -> (u256, u256);
 
-    #[storage(read)]
     fn get_next_global_average_price(
         average_price: u256,
         next_price: u256,
@@ -72,7 +68,6 @@ abi ShortsTracker {
         realized_pnl: Signed256
     ) -> u256;
 
-    #[storage(read)]
     fn get_next_delta(
         delta: u256,
         average_price: u256,

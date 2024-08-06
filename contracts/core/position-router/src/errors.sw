@@ -4,13 +4,12 @@ library;
 pub enum Error {
     PositionRouterAlreadyInitialized: (),
     PositionRouterForbidden: (),
-    PositionRouterExpectedPositionKeeper: (),
-    PositionRouterExpectedCallerToBeKeeper: (),
-    PositionRouterExpectedCallerToBeAccount: (),
+    PositionRouterExpectedAccountToBeSender: (),
 
-    PositionRouterFeeTooLow: (),
+    PositionRouterLeverageNotEnabled: (),
+
+    PositionRouterIncorrectCollateralAmountForwarded: (),
+    PositionRouterZeroCollateralAmountForwarded: (),
+
     PositionRouterInvalidPathLen: (),
-
-    PositionRouterDelay: (),
-    PositionRouterExpired: (),
 }

@@ -3,14 +3,13 @@ library;
 
 use helpers::{
     context::*,
-    signed_256::*,
 };
-use ::vault_storage::Position;
 
 abi Vault {
     #[storage(read, write)]
     fn initialize(
         gov: Account,
+        vault_utils: ContractId,
         vault_storage: ContractId,
     );
 
@@ -22,10 +21,13 @@ abi Vault {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(read, write)]
-    fn withdraw_fees(asset: AssetId, receiver: Account) -> u64;
+    fn set_gov(new_gov: Account);
 
     #[storage(read)]
-    fn upgrade_vault(new_vault: ContractId, asset: AssetId, amount: u64);
+    fn withdraw_fees(
+        asset: AssetId,
+        receiver: Account 
+    );
 
     /*
           ____ __     ___               
@@ -35,149 +37,21 @@ abi Vault {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     #[storage(read)]
-    fn get_vault_storage() -> ContractId;
-    
+    fn get_gov() -> Account;
+
     #[storage(read)]
-    fn get_position(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-    ) -> (
-        u256, u256, u256,
-        u256, u256, Signed256,
-        bool, u64,
-        Position
-    );
+    fn get_vault_storage() -> ContractId;
+
+    #[storage(read)]
+    fn get_vault_utils() -> ContractId;
 
     fn get_position_key(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         is_long: bool,
     ) -> b256;
 
-    #[storage(read)]
-    fn get_position_delta(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-    ) -> (bool, u256);
-
-    #[storage(read)]
-    fn get_delta(
-        index_asset: AssetId,
-        size: u256,
-        average_price: u256,
-        is_long: bool,
-        last_increased_time: u64
-    ) -> (bool, u256);
-
-    #[storage(read)]
-    fn get_entry_funding_rate(
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool 
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_funding_fee(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-        size: u256,
-        entry_funding_rate: u256
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_position_fee(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-        size_delta: u256,
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_max_price(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn get_min_price(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn asset_to_usd_min(
-        asset: AssetId, 
-        asset_amount: u256
-    ) -> u256;
-
-    #[storage(read)]
-    fn usd_to_asset_max(
-        asset: AssetId, 
-        usd_amount: u256
-    ) -> u256;
-
-    #[storage(read)]
-    fn usd_to_asset_min(
-        asset: AssetId, 
-        usd_amount: u256
-    ) -> u256;
-
-    #[storage(read)]
-    fn usd_to_asset(
-        asset: AssetId, 
-        usd_amount: u256, 
-        price: u256
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_redemption_amount(
-        asset: AssetId, 
-        usdg_amount: u256
-    ) -> u256; 
-
-    #[storage(read)]
-    fn get_redemption_collateral(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn get_redemption_collateral_usd(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn get_position_leverage(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_fee_basis_points(
-        asset: AssetId,
-        usdg_delta: u256,
-        fee_basis_points: u256,
-        tax_basis_points: u256,
-        increment: bool
-    ) -> u256;
-
-    #[storage(read)]
-    fn get_target_usdg_amount(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn get_utilization(asset: AssetId) -> u256;
-
-    #[storage(read)]
-    fn get_global_short_delta(asset: AssetId) -> (bool, u256);
-
-    #[storage(read)]
-    fn validate_liquidation(
-        account: Address,
-        collateral_asset: AssetId,
-        index_asset: AssetId,
-        is_long: bool,
-        should_raise: bool,
-    ) -> (u256, u256);
-    
     /*
           ____  ____        _     _ _      
          / / / |  _ \ _   _| |__ | (_) ___ 
@@ -185,36 +59,39 @@ abi Vault {
        / / /   |  __/| |_| | |_) | | | (__ 
       /_/_/    |_|    \__,_|_.__/|_|_|\___|
     */
-    #[storage(read, write)]
-    fn update_cumulative_funding_rate(collateral_asset: AssetId, index_asset: AssetId);
+    #[storage(read)]
+    fn update_cumulative_funding_rate(
+        collateral_asset: AssetId, 
+        index_asset: AssetId
+    );
 
     #[payable]
-    #[storage(read, write)]
+    #[storage(read)]
     fn direct_pool_deposit(asset: AssetId);
 
-    #[storage(read, write)]
-    fn buy_usdg(asset: AssetId, receiver: Account) -> u256;
+    #[storage(read)]
+    fn buy_rusd(asset: AssetId, receiver: Account) -> u256;
 
-    #[storage(read, write)]
-    fn sell_usdg(asset: AssetId, receiver: Account) -> u256;
+    #[storage(read)]
+    fn sell_rusd(asset: AssetId, receiver: Account) -> u256;
 
     #[payable]
-    #[storage(read, write)]
+    #[storage(read)]
     fn swap(asset_in: AssetId, asset_out: AssetId, receiver: Account) -> u64;
 
     #[payable]
-    #[storage(read, write)]
+    #[storage(read)]
     fn increase_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         size_delta: u256,
-        is_long: bool 
+        is_long: bool
     );
 
-    #[storage(read, write)]
+    #[storage(read)]
     fn decrease_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         collateral_delta: u256,
@@ -223,9 +100,9 @@ abi Vault {
         receiver: Account
     ) -> u256;
 
-    #[storage(read, write)]
+    #[storage(read)]
     fn liquidate_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         is_long: bool,

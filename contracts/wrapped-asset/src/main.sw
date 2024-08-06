@@ -64,7 +64,6 @@ impl WrappedAsset for Contract {
             !storage.is_initialized.read(), 
             Error::WrappedAssetAlreadyInitialized
         );
-
         require(
             asset.non_zero(), 
             Error::WrappedAssetZeroAsset

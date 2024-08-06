@@ -15,53 +15,45 @@ mod constants;
 mod errors;
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
+    call_frames::msg_asset_id,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
 use std::hash::*;
 use core_interfaces::{
     base_position_manager::BasePositionManager,
     vault::Vault,
     vault_storage::VaultStorage,
+    vault_utils::VaultUtils,
     router::Router,
     shorts_tracker::ShortsTracker,
 };
+use referrals_interfaces::referral_storage::ReferralStorage;
 use helpers::{
     context::*, 
     zero::*, 
     utils::*, 
     transfer::*, 
-    math::*
+    math::*,
+    signed_256::Signed256
 };
 use events::*;
 use constants::*;
 use errors::*;
 
 storage {
-    // gov is not restricted to an `Address` (EOA) or a `Contract` (external)
-    // because this can be either a regular EOA (Address) or a Multisig (Contract)
+    // gov is not restricted to an `Account` (EOA) or a `Contract` (external)
+    // because this can be either a regular EOA (Account) or a Multisig (Contract)
     gov: Account = ZERO_ACCOUNT,
     // because `BasePositionManager` is supposed to be a Base inheritance contract
     // and Sway doesn't support inheritance, we simulate inheritance by 
     // restricting certain functions to the `child`
     child: ContractId = ZERO_CONTRACT,
     is_initialized: bool = false,
-    is_global_short_data_ready: bool = false,
+    child_registered: bool = false,
     
     vault: ContractId = ZERO_CONTRACT,
-    vault_storage: ContractId = ZERO_CONTRACT,
     shorts_tracker: ContractId = ZERO_CONTRACT,
     router: ContractId = ZERO_CONTRACT,
     referral_storage: ContractId = ZERO_CONTRACT,
@@ -86,9 +78,9 @@ impl BasePositionManager for Contract {
     fn initialize(
         gov: Account,
         vault: ContractId,
-        vault_storage: ContractId,
         router: ContractId,
         shorts_tracker: ContractId,
+        referral_storage: ContractId,
         deposit_fee: u64
     ) {
         require(
@@ -97,14 +89,12 @@ impl BasePositionManager for Contract {
         );
         storage.is_initialized.write(true);
 
+        storage.gov.write(gov);
         storage.vault.write(vault);
-        storage.vault_storage.write(vault_storage);
         storage.router.write(router);
         storage.shorts_tracker.write(shorts_tracker);
+        storage.referral_storage.write(referral_storage);
         storage.deposit_fee.write(deposit_fee);
-
-        storage.child.write(get_contract_or_revert());
-        storage.gov.write(gov);
     }
 
     /*
@@ -117,12 +107,26 @@ impl BasePositionManager for Contract {
     #[storage(read, write)]
     fn set_gov(new_gov: Account) {
         _only_gov();
+
         storage.gov.write(new_gov);
+    }
+
+    #[storage(read, write)]
+    fn register_child(child: ContractId) {
+        _only_gov();
+        require(
+            !storage.child_registered.read(),
+            Error::BPMChildAlreadyRegistered
+        );
+        storage.child_registered.write(true);
+
+        storage.child.write(child);
     }
 
     #[storage(read, write)]
     fn set_deposit_fee(deposit_fee: u64) {
         _only_gov();
+
         storage.deposit_fee.write(deposit_fee);
         log(SetDepositFee { deposit_fee });
     }
@@ -132,6 +136,7 @@ impl BasePositionManager for Contract {
         increase_position_buffer_bps: u64
     ) {
         _only_gov();
+        
         storage.increase_position_buffer_bps.write(increase_position_buffer_bps);
         log(SetIncreasePositionBufferBps {
             increase_position_buffer_bps
@@ -141,6 +146,7 @@ impl BasePositionManager for Contract {
     #[storage(read, write)]
     fn set_referral_storage(referral_storage: ContractId) {
         _only_gov();
+
         storage.referral_storage.write(referral_storage);
         log(SetReferralStorage { referral_storage });
     }
@@ -152,6 +158,7 @@ impl BasePositionManager for Contract {
         short_sizes: Vec<u256>
     ) {
         _only_gov();
+
         require(
             assets.len() == long_sizes.len() && assets.len() == long_sizes.len() && assets.len() == short_sizes.len(),
             Error::BPMIncorrectLength
@@ -171,7 +178,7 @@ impl BasePositionManager for Contract {
             i += 1;
         }
 
-        log(SetMaxGlobalSizes {
+        log(SetMaxGlobalSize {
             assets,
             long_sizes,
             short_sizes
@@ -205,6 +212,18 @@ impl BasePositionManager for Contract {
         });
     }
 
+    /*
+          ____ __     ___               
+         / / / \ \   / (_) _____      __
+        / / /   \ \ / /| |/ _ \ \ /\ / /
+       / / /     \ V / | |  __/\ V  V / 
+      /_/_/       \_/  |_|\___| \_/\_/  
+    */
+    #[storage(read)]
+    fn get_referral_storage() -> ContractId {
+        storage.referral_storage.read()
+    }
+
     #[storage(read)]
     fn get_max_global_long_sizes(asset: AssetId) -> u256 {
         storage.max_global_long_sizes.get(asset).try_read().unwrap_or(0)
@@ -213,6 +232,11 @@ impl BasePositionManager for Contract {
     #[storage(read)]
     fn get_max_global_short_sizes(asset: AssetId) -> u256 {
         storage.max_global_short_sizes.get(asset).try_read().unwrap_or(0)
+    }
+
+    #[storage(read)]
+    fn get_fee_reserves(asset: AssetId) -> u64 {
+        storage.fee_reserves.get(asset).try_read().unwrap_or(0)
     }
 
     /*
@@ -225,7 +249,7 @@ impl BasePositionManager for Contract {
     #[payable]
     #[storage(read, write)]
     fn collect_fees(
-        account: Address,
+        account: Account,
         path: Vec<AssetId>,
         amount_in: u64,
         index_asset: AssetId,
@@ -233,6 +257,11 @@ impl BasePositionManager for Contract {
         size_delta: u256
     ) -> u64 {
         _only_child();
+
+        require(
+            path.len() > 0,
+            Error::BPMInvalidPathLen
+        );
 
         _collect_fees(
             account,
@@ -247,7 +276,7 @@ impl BasePositionManager for Contract {
     #[payable]
     #[storage(read)]
     fn increase_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         size_delta: u256,
@@ -269,7 +298,7 @@ impl BasePositionManager for Contract {
     #[payable]
     #[storage(read)]
     fn decrease_position(
-        account: Address,
+        account: Account,
         collateral_asset: AssetId,
         index_asset: AssetId,
         collateral_delta: u256,
@@ -340,18 +369,19 @@ fn _validate_max_global_size(
         return;
     }
 
-    let vault_storage = abi(VaultStorage, storage.vault_storage.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
 
     if is_long {
         let max_global_long_size = storage.max_global_long_sizes.get(index_asset).try_read().unwrap_or(0);
-        let val = vault_storage.get_guaranteed_usd(index_asset) + size_delta;
+        let val = vault_utils.get_guaranteed_usd(index_asset) + size_delta;
 
         if max_global_long_size > 0 && val > max_global_long_size {
             require(false, Error::BPMMaxLongsExceeded);
         }
     } else {
         let max_global_short_size = storage.max_global_short_sizes.get(index_asset).try_read().unwrap_or(0);
-        let val = vault_storage.get_global_short_sizes(index_asset) + size_delta;
+        let val = vault_utils.get_global_short_sizes(index_asset) + size_delta;
 
         if max_global_short_size > 0 && val > max_global_short_size {
             require(false, Error::BPMMaxShortsExceeded);
@@ -361,7 +391,7 @@ fn _validate_max_global_size(
 
 #[storage(read)]
 fn _increase_position(
-    account: Address,
+    account: Account,
     collateral_asset: AssetId,
     index_asset: AssetId,
     size_delta: u256,
@@ -370,11 +400,12 @@ fn _increase_position(
 ) {
     _validate_max_global_size(index_asset, is_long, size_delta);
 
-    let vault = abi(Vault, storage.vault.read().value);
-    let router = abi(Router, storage.router.read().value);
-    let shorts_tracker = abi(ShortsTracker, storage.shorts_tracker.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
+    let router = abi(Router, storage.router.read().into());
+    let shorts_tracker = abi(ShortsTracker, storage.shorts_tracker.read().into());
 
-    let mark_price = if is_long { vault.get_max_price(index_asset) } else { vault.get_min_price(index_asset) };
+    let mark_price = if is_long { vault_utils.get_max_price(index_asset) } else { vault_utils.get_min_price(index_asset) };
     if is_long {
         require(mark_price <= price, Error::BPMMarkPriceGtPrice);
     } else {
@@ -397,7 +428,7 @@ fn _increase_position(
 
     // @TODO
     // timelock.enable_leverage(vault);
-    
+
     router.plugin_increase_position(
         account,
         collateral_asset,
@@ -414,7 +445,7 @@ fn _increase_position(
 
 #[storage(read)]
 fn _decrease_position(
-    account: Address,
+    account: Account,
     collateral_asset: AssetId,
     index_asset: AssetId,
     collateral_delta: u256,
@@ -423,11 +454,12 @@ fn _decrease_position(
     receiver: Account,
     price: u256 
 ) -> u256 {
-    let vault = abi(Vault, storage.vault.read().value);
-    let router = abi(Router, storage.router.read().value);
-    let shorts_tracker = abi(ShortsTracker, storage.shorts_tracker.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
+    let router = abi(Router, storage.router.read().into());
+    let shorts_tracker = abi(ShortsTracker, storage.shorts_tracker.read().into());
 
-    let mark_price = if is_long { vault.get_min_price(index_asset) } else { vault.get_max_price(index_asset) };
+    let mark_price = if is_long { vault_utils.get_min_price(index_asset) } else { vault_utils.get_max_price(index_asset) };
     if is_long {
         require(mark_price >= price, Error::BPMMarkPriceLtPrice)
     } else {
@@ -471,7 +503,7 @@ fn _decrease_position(
 
 #[storage(read, write)]
 fn _collect_fees(
-    account: Address,
+    account: Account,
     path: Vec<AssetId>,
     amount_in: u64,
     index_asset: AssetId,
@@ -487,10 +519,11 @@ fn _collect_fees(
         size_delta
     );
 
+    let fee_asset = path.get(path.len() - 1).unwrap();
+
     if should_deduct_fee {
         let after_fee_amount = amount_in * (BASIS_POINTS_DIVISOR - storage.deposit_fee.read()) / BASIS_POINTS_DIVISOR;
         let fee_amount = amount_in - after_fee_amount;
-        let fee_asset = path.get(path.len() - 1).unwrap();
 
         require(
             msg_asset_id() == fee_asset,
@@ -514,6 +547,13 @@ fn _collect_fees(
         );
 
         return after_fee_amount;
+    } else {
+        // transfer out the entire amount back to the sender
+        transfer_assets(
+            fee_asset,
+            get_sender(),
+            msg_amount()
+        );
     }
 
     amount_in
@@ -521,7 +561,7 @@ fn _collect_fees(
 
 #[storage(read)]
 fn _should_deduct_fee(
-    account: Address,
+    account: Account,
     path: Vec<AssetId>,
     amount_in: u64,
     index_asset: AssetId,
@@ -540,8 +580,9 @@ fn _should_deduct_fee(
 
     let collateral_asset = path.get(path.len() - 1).unwrap();
 
-    let vault = abi(Vault, storage.vault.read().value);
-    let (size, collateral, _, _, _, _, _, _, _) = vault.get_position(account, collateral_asset, index_asset, is_long);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
+    let (size, collateral, _, _, _, _, _, _) = vault_utils.get_position(account, collateral_asset, index_asset, is_long);
 
     // if there is no existing position, do not charge a fee
     if size == 0 {
@@ -549,7 +590,7 @@ fn _should_deduct_fee(
     }
 
     let next_size = size + size_delta;
-    let collateral_delta = vault.asset_to_usd_min(collateral_asset, amount_in.as_u256());
+    let collateral_delta = vault_utils.asset_to_usd_min(collateral_asset, amount_in.as_u256());
     let next_collateral = collateral + collateral_delta;
 
     let prev_leverage = size * BASIS_POINTS_DIVISOR.as_u256() / collateral;
@@ -570,63 +611,67 @@ fn _should_deduct_fee(
 
 #[storage(read)]
 fn _emit_increase_position_referral(
-    account: Address,
+    account: Account,
     size_delta: u256
 ) {
-    let referral_storage = storage.referral_storage.read();
-    if referral_storage == ZERO_CONTRACT {
+    let _referral_storage = storage.referral_storage.read();
+    if _referral_storage == ZERO_CONTRACT {
         return;
     }
 
-    // @TODO: uncomment when timelock is in play
-    // let referral = abi(ReferralStorage, referral_storage.value);
-    // let (referral_code, referrer) = referral.get_trader_referral_info(account);
-    // if referral == ZERO {
-    //     return;
-    // }
+    let referral_storage = abi(ReferralStorage, _referral_storage.into());
+    let (referral_code, referrer) = referral_storage.get_trader_referral_info(account);
+    if referral_code == ZERO {
+        return;
+    }
 
-    // vault vault_storage = abi(Vault, storage.vault.read().value);
+    let mut margin_fee_basis_points = 0;
+    {
+        let vault = abi(Vault, storage.vault.read().into());
+        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
 
-    // @TODO: make sure gov is a timelock
-    // let timelock = vault.gov();
+        margin_fee_basis_points = vault_storage.get_margin_fee_basis_points();
+    }
 
     log(IncreasePositionReferral {
         account,
         size_delta,
-        margin_fee_basis_points: 0, // @TODO: timelock.margin_fee_basis_points()
-        referral_code: ZERO,   // @TODO: replace with actual referral_code
-        referrer: ZERO_ADDRESS // @TODO: replace with actual referrer
+        margin_fee_basis_points,
+        referral_code,
+        referrer
     });
 }
 
 #[storage(read)]
 fn _emit_decrease_position_referral(
-    account: Address,
+    account: Account,
     size_delta: u256
 ) {
-    let referral_storage = storage.referral_storage.try_read().unwrap_or(ZERO_CONTRACT);
-    if referral_storage == ZERO_CONTRACT {
+    let _referral_storage = storage.referral_storage.read();
+    if _referral_storage == ZERO_CONTRACT {
         return;
     }
 
-    // @TODO: uncomment when timelock is in play
-    // let referral = abi(ReferralStorage, referral_storage.value);
-    // let (referral_code, referrer) = referral.get_trader_referral_info(account);
-    // if referral == ZERO {
-    //     return;
-    // }
+    let referral_storage = abi(ReferralStorage, _referral_storage.into());
+    let (referral_code, referrer) = referral_storage.get_trader_referral_info(account);
+    if referral_code == ZERO {
+        return;
+    }
 
-    // vault vault_storage = abi(Vault, storage.vault.read().value);
+    let mut margin_fee_basis_points = 0;
+    {
+        let vault = abi(Vault, storage.vault.read().into());
+        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
 
-    // @TODO: make sure gov is a timelock
-    // let timelock = vault.gov();
+        margin_fee_basis_points = vault_storage.get_margin_fee_basis_points();
+    }
 
     log(DecreasePositionReferral {
         account,
         size_delta,
-        margin_fee_basis_points: 0, // @TODO: timelock.margin_fee_basis_points()
-        referral_code: ZERO,   // @TODO: replace with actual referral_code
-        referrer: ZERO_ADDRESS // @TODO: replace with actual referrer
+        margin_fee_basis_points,
+        referral_code,
+        referrer
     });
 }
 
@@ -646,7 +691,6 @@ fn _swap(
     }
 
     require(false, Error::BPMIncorrectPathLength);
-
     0
 }
 
@@ -657,7 +701,7 @@ fn _vault_swap(
     min_out: u64,
     receiver: Account
 ) -> u64 {
-    let amount_out = abi(Vault, storage.vault.read().value).swap(
+    let amount_out = abi(Vault, storage.vault.read().into()).swap(
         asset_in,
         asset_out,
         receiver
@@ -665,7 +709,7 @@ fn _vault_swap(
 
     require(
         amount_out >= min_out,
-        "BasePositionManager: invalid amount_out"
+        Error::BPMInvalidAmountOut,
     );
 
     amount_out

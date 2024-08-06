@@ -6,10 +6,10 @@ pub enum Error {
     VaultStorageOnlyAuthorizedEntity: (),
     
     VaultStorageAlreadyInitialized: (),
-    VaultStorageInvalidUSDGAsset: (),
+    VaultStorageInvalidRUSDAsset: (),
     VaultStorageZeroAsset: (),
 
-    VaultStorageMaxUsdgExceeded: (),
+    VaultStorageMaxRusdExceeded: (),
     
     VaultStorageInvalidTaxBasisPoints: (),
     VaultStorageInvalidStableTaxBasisPoints: (),
@@ -24,4 +24,5 @@ pub enum Error {
     VaultStorageInvalidStableFundingRateFactor: (),
 
     VaultStorageAssetNotWhitelisted: (),
+    VaultStoragePricefeedZero: (),
 }

@@ -12,27 +12,18 @@ contract;
 
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
+    call_frames::msg_asset_id,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
     primitive_conversions::u64::*
 };
 use std::hash::*;
 use peripheral_interfaces::balance_updater::BalanceUpdater;
 use core_interfaces::{
     vault::Vault,
-    vault_storage::VaultStorage
+    vault_storage::VaultStorage,
+    vault_utils::VaultUtils
 };
 use interfaces::wrapped_asset::{
     WrappedAsset as WrappedAssetABI
@@ -54,19 +45,20 @@ impl BalanceUpdater for Contract {
     fn update_balance(
         vault_: ContractId,
         asset: AssetId,
-        usdg: WrappedAsset,
-        usdg_amount: u64
+        rusd: WrappedAsset,
+        rusd_amount: u64
     ) {
         require(
             msg_asset_id() == asset,
             Error::BalanceUpdaterInvalidAssetForwarded
         );
 
-        let vault = abi(Vault, vault_.value);
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().value);
+        let vault = abi(Vault, vault_.into());
+        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
 
         // @TODO: potential revert here
-        let pool_amount = u64::try_from(vault_storage.get_pool_amounts(asset)).unwrap();
+        let pool_amount = u64::try_from(vault_utils.get_pool_amounts(asset)).unwrap();
         // @TODO: potential revert here
         let fee = u64::try_from(vault_storage.get_fee_reserves(asset)).unwrap();
         let balance = balance_of(vault_, asset);
@@ -83,16 +75,16 @@ impl BalanceUpdater for Contract {
             transfer_amount
         );
 
-        _unwrap(usdg, usdg_amount);
+        _unwrap(rusd, rusd_amount);
 
         // forward assets to vault
         transfer_assets(
-            usdg,
+            rusd,
             Account::from(vault_),
-            usdg_amount
+            rusd_amount
         );
 
-        let _ = vault.sell_usdg(asset, get_sender());
+        let _ = vault.sell_rusd(asset, get_sender());
     }
 }
 
@@ -100,12 +92,12 @@ fn _unwrap(
     asset: WrappedAsset,
     amount: u64,
 ) {
-    let asset_to_unwrap = abi(WrappedAssetABI, asset.value);
+    let asset_to_unwrap = abi(WrappedAssetABI, asset.into());
 
     // transfer wrapped asset to self
     asset_to_unwrap.transfer_on_behalf_of(
         get_sender(),
-        Account::from(contract_id()),
+        Account::from(ContractId::this()),
         amount
     );
 

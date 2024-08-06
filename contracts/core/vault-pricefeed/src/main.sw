@@ -13,20 +13,10 @@ mod constants;
 mod errors;
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
     math::*,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
     primitive_conversions::u64::*
 };
 use std::hash::*;
@@ -75,10 +65,11 @@ storage {
 
 impl VaultPricefeed for Contract {
     #[storage(read, write)]
-    fn initialize(gov: Address) {
+    fn initialize(gov: Account) {
         require(!storage.is_initialized.read(), Error::VaultPriceFeedAlreadyInitialized);
         storage.is_initialized.write(true);
-        storage.gov.write(Account::from(gov));
+        
+        storage.gov.write(gov);
     }
 
     /*
@@ -188,6 +179,16 @@ impl VaultPricefeed for Contract {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     #[storage(read)]
+    fn get_adjustment_basis_points(asset: AssetId) -> u64 {
+        storage.adjustment_basis_points.get(asset).try_read().unwrap_or(0)
+    }
+
+    #[storage(read)]
+    fn is_adjustment_additive(asset: AssetId) -> bool {
+        storage.is_adjustment_additive.get(asset).try_read().unwrap_or(false)
+    }
+
+    #[storage(read)]
     fn get_price(
         asset: AssetId,
         maximize: bool,
@@ -244,6 +245,30 @@ impl VaultPricefeed for Contract {
         maximize: bool
     ) -> u256 {
         _get_primary_price(asset, maximize)
+    }
+
+    /*
+          ____  ____        _     _ _      
+         / / / |  _ \ _   _| |__ | (_) ___ 
+        / / /  | |_) | | | | '_ \| | |/ __|
+       / / /   |  __/| |_| | |_) | | | (__ 
+      /_/_/    |_|    \__,_|_.__/|_|_|\___|
+    */
+    // this is just a helper method to update the price of an asset directly from VaultPricefeed
+    // this will be removed in the future when Pyth prices are supported on-chain
+    #[storage(read)]
+    fn update_price(
+        asset: AssetId,
+        new_price: u256
+    ) {
+        let pricefeed_addr = storage.pricefeeds.get(asset).try_read().unwrap_or(ZERO_CONTRACT);
+        require(
+            pricefeed_addr.non_zero(),
+            Error::VaultPriceFeedInvalidPriceFeedToUpdate
+        );
+
+        let pricefeed = abi(Pricefeed, pricefeed_addr.into());
+        pricefeed.set_latest_answer(new_price);
     }
 }
 
@@ -411,7 +436,7 @@ fn _get_latest_primary_price(asset: AssetId) -> u256 {
         Error::VaultPriceFeedInvalidPriceFeed
     );
 
-    let price = abi(Pricefeed, pricefeed_addr.value).latest_answer();
+    let price = abi(Pricefeed, pricefeed_addr.into()).latest_answer();
     require(
         price > 0,
         Error::VaultPriceFeedInvalidPrice
@@ -431,7 +456,7 @@ fn _get_primary_price(
         Error::VaultPriceFeedInvalidPriceFeed
     );
 
-    let pricefeed = abi(Pricefeed, pricefeed_addr.value);
+    let pricefeed = abi(Pricefeed, pricefeed_addr.into());
 
     let mut price: u256 = 0;
     let latest_round_id = pricefeed.latest_round();

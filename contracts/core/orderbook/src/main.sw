@@ -14,26 +14,17 @@ mod constants;
 mod errors;
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
+    call_frames::msg_asset_id,
     context::*,
     revert::require,
     primitive_conversions::u64::*,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
 use std::hash::*;
 use core_interfaces::{
     orderbook::*,
     vault::Vault,
+    vault_utils::VaultUtils,
     router::Router,
 };
 use interfaces::wrapped_asset::{
@@ -60,20 +51,19 @@ storage {
     
     vault: ContractId = ZERO_CONTRACT,
     router: ContractId = ZERO_CONTRACT,
-    usdg: AssetId = ZERO_ASSET,
-    referral_storage: ContractId = ZERO_CONTRACT,
+    rusd: AssetId = ZERO_ASSET,
 
-    increase_orders: StorageMap<Address, StorageMap<u64, IncreaseOrder>> = 
-        StorageMap::<Address, StorageMap<u64, IncreaseOrder>> {},
-    increase_orders_index: StorageMap<Address, u64> = StorageMap::<Address, u64> {},
+    increase_orders: StorageMap<Account, StorageMap<u64, IncreaseOrder>> = 
+        StorageMap::<Account, StorageMap<u64, IncreaseOrder>> {},
+    increase_orders_index: StorageMap<Account, u64> = StorageMap::<Account, u64> {},
 
-    decrease_orders: StorageMap<Address, StorageMap<u64, DecreaseOrder>> = 
-        StorageMap::<Address, StorageMap<u64, DecreaseOrder>> {},
-    decrease_orders_index: StorageMap<Address, u64> = StorageMap::<Address, u64> {},
+    decrease_orders: StorageMap<Account, StorageMap<u64, DecreaseOrder>> = 
+        StorageMap::<Account, StorageMap<u64, DecreaseOrder>> {},
+    decrease_orders_index: StorageMap<Account, u64> = StorageMap::<Account, u64> {},
 
-    swap_orders: StorageMap<Address, StorageMap<u64, SwapOrder>> = 
-        StorageMap::<Address, StorageMap<u64, SwapOrder>> {},
-    swap_orders_index: StorageMap<Address, u64> = StorageMap::<Address, u64> {},
+    swap_orders: StorageMap<Account, StorageMap<u64, SwapOrder>> = 
+        StorageMap::<Account, StorageMap<u64, SwapOrder>> {},
+    swap_orders_index: StorageMap<Account, u64> = StorageMap::<Account, u64> {},
     
     min_execution_fee: u64 = 0,
     min_purchase_asset_amount_usd: u256 = 0
@@ -84,7 +74,7 @@ impl Orderbook for Contract {
     fn initialize(
         router: ContractId,
         vault: ContractId,
-        usdg: AssetId,
+        rusd: AssetId,
         min_execution_fee: u64,
         min_purchase_asset_amount_usd: u64
     ) {
@@ -93,11 +83,11 @@ impl Orderbook for Contract {
 
         require(vault.non_zero(), Error::OrderBookVaultZero);
         require(router.non_zero(), Error::OrderBookRouterZero);
-        require(usdg.non_zero(), Error::OrderBookUsdgZero);
+        require(rusd.non_zero(), Error::OrderBookRusdZero);
         
         storage.router.write(router);
         storage.vault.write(vault);
-        storage.usdg.write(usdg);
+        storage.rusd.write(rusd);
         storage.min_execution_fee.write(min_execution_fee);
         storage.min_purchase_asset_amount_usd.write(min_purchase_asset_amount_usd.as_u256());
 
@@ -106,7 +96,7 @@ impl Orderbook for Contract {
         log(Initialize {
             router,
             vault,
-            usdg,
+            rusd,
             min_execution_fee,
             min_purchase_asset_amount_usd
         });
@@ -149,7 +139,7 @@ impl Orderbook for Contract {
     */
     #[storage(read)]
     fn get_swap_order(
-        account: Address,
+        account: Account,
         order_index: u64
     ) -> (
         AssetId, AssetId, AssetId,
@@ -194,7 +184,7 @@ impl Orderbook for Contract {
 
     #[storage(read)]
     fn get_increase_order(
-        account: Address,
+        account: Account,
         order_index: u64
     ) -> (
         AssetId, u256, AssetId, AssetId,
@@ -220,7 +210,7 @@ impl Orderbook for Contract {
 
     #[storage(read)]
     fn get_decrease_order(
-        account: Address,
+        account: Account,
         order_index: u64
     ) -> (
         AssetId, u256, AssetId,
@@ -243,6 +233,13 @@ impl Orderbook for Contract {
         )
     }
 
+    /*
+          ____  ____        _     _ _      
+         / / / |  _ \ _   _| |__ | (_) ___ 
+        / / /  | |_) | | | | '_ \| | |/ __|
+       / / /   |  __/| |_| | |_) | | | (__ 
+      /_/_/    |_|    \__,_|_.__/|_|_|\___|
+    */
     #[payable]
     #[storage(read, write)]
     fn create_increase_order(
@@ -258,90 +255,18 @@ impl Orderbook for Contract {
         execution_fee: u64,
         should_wrap: bool
     ) {
-        require(
-            msg_asset_id() == BASE_ASSET_ID,
-            Error::OrderBookInvalidAssetForwarded
-        );
-
-        require(
-            execution_fee >= storage.min_execution_fee.read(),
-            Error::OrderBookInsufficientExecutionFee
-        );
-
-        if (should_wrap) {
-            require(
-                path.get(0).unwrap() == BASE_ASSET_ID,
-                Error::OrderBookPath0ShouldBeETH
-            );
-            require(msg_amount() == execution_fee + amount_in, Error::OrderBookIncorrectValueTransferred);
-        } else {
-            require(msg_amount() == execution_fee, Error::OrderBookIncorrectExecutionFeeTransferred);
-            abi(Router, storage.router.read().value)
-                .plugin_transfer(
-                    path.get(0).unwrap(),
-                    get_address_or_revert(),
-                    Account::from(contract_id()),
-                    amount_in
-                );
-        }
-
-        let purchase_asset = path.get(path.len() - 1).unwrap();
-        let mut purchase_asset_amount: u256 = 0;
-        if path.len() > 1 {
-            let asset = path.get(0).unwrap();
-
-            require(
-                path.get(0).unwrap() != purchase_asset,
-                Error::OrderBookInvalidPath
-            );
-
-            require(
-                msg_asset_id() == asset,
-                Error::OrderBookInvalidMsgAsset
-            );
-
-            require(
-                msg_amount() == amount_in,
-                Error::OrderBookInvalidMsgAmount
-            );
-
-            transfer_assets(
-                asset,
-                Account::from(storage.vault.read()),
-                amount_in
-            );
-
-            purchase_asset_amount = _swap(
-                path,
-                min_out,
-                Account::from(contract_id())
-            );
-        } else {
-            purchase_asset_amount = amount_in.as_u256();
-        }
-
-        let vault = abi(Vault, storage.vault.read().value);
-
-        let purchase_asset_amount_usd = vault.asset_to_usd_min(
-            purchase_asset,
-            purchase_asset_amount
-        );
-        require(
-            purchase_asset_amount_usd >= storage.min_purchase_asset_amount_usd.read(),
-            Error::OrderBookInsufficientCollateral
-        );
-
-        _create_increase_order(
-            get_address_or_revert(),
-            purchase_asset,
-            purchase_asset_amount,
-            collateral_asset,
+        _interm_create_increase_order(
+            path,
+            amount_in,
             index_asset,
+            min_out,
             size_delta,
+            collateral_asset,
             is_long,
             trigger_price,
             trigger_above_threshold,
-            execution_fee
+            execution_fee,
+            should_wrap
         );
     }
 
@@ -352,146 +277,30 @@ impl Orderbook for Contract {
         trigger_price: u256,
         trigger_above_threshold: bool
     ) {
-        let mut order = storage.increase_orders.get(get_address_or_revert()).get(order_index)
-            .try_read().unwrap_or(IncreaseOrder::default());
-        
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        );
-
-        order.trigger_price = trigger_price;
-        order.trigger_above_threshold = trigger_above_threshold;
-        order.size_delta = size_delta;
-
-        storage.increase_orders.get(get_address_or_revert()).insert(order_index, order);
-
-        log(UpdateIncreaseOrder {
-            account: get_address_or_revert(),
+        _update_increase_order(
             order_index,
-            collateral_asset: order.collateral_asset,
-            index_asset: order.index_asset,
-            is_long: order.is_long,
             size_delta,
             trigger_price,
             trigger_above_threshold
-        });
+        );
     }
 
     #[storage(read, write)]
     fn cancel_increase_order(order_index: u64) {
-        let order = storage.increase_orders.get(get_address_or_revert()).get(order_index)
-            .try_read().unwrap_or(IncreaseOrder::default());
-
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        );
-
-        storage.increase_orders.get(get_address_or_revert()).remove(order_index);
-
-        transfer_assets(
-            order.purchase_asset,
-            get_sender(),
-            // @TODO: potential revert here
-            u64::try_from(order.purchase_asset_amount).unwrap()
-        );
-
-        // transfer execution fee
-        _transfer_out_eth(get_sender(), order.execution_fee);
-
-        log(CancelIncreaseOrder {
-            account: order.account,
-            order_index,
-            purchase_asset: order.purchase_asset,
-            purchase_asset_amount: order.purchase_asset_amount,
-            collateral_asset: order.collateral_asset,
-            index_asset: order.index_asset,
-            is_long: order.is_long,
-            size_delta: order.size_delta,
-            trigger_price: order.trigger_price,
-            trigger_above_threshold: order.trigger_above_threshold,
-            execution_fee: order.execution_fee
-        });
+        _cancel_increase_order(order_index);
     }
 
     #[storage(read, write)]
     fn execute_increase_order(
-        address: Address,
+        account: Account,
         order_index: u64,
-        fee_receiver: Address
+        fee_receiver: Account
     ) {
-        let order = storage.increase_orders.get(address).get(order_index)
-            .try_read().unwrap_or(IncreaseOrder::default());
-
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        ); 
-
-        // increase long should use max price
-        // increase short should use min price
-        let (current_price, _) = _validate_position_order_price(
-            order.trigger_above_threshold,
-            order.trigger_price,
-            order.index_asset,
-            order.is_long,
-            true
-        );
-
-        storage.increase_orders.get(address).remove(order_index);
-
-        transfer_assets(
-            order.purchase_asset,
-            Account::from(storage.vault.read()),
-            // @TODO: potential revert here
-            u64::try_from(order.purchase_asset_amount).unwrap()
-        );
-
-        if order.purchase_asset != order.collateral_asset {
-            let mut path: Vec<AssetId> = Vec::new();
-            path.push(order.purchase_asset);
-            path.push(order.collateral_asset);
-
-            let amount_out = _swap(
-                path,
-                0,
-                Account::from(contract_id())
-            );
-            transfer_assets(
-                order.collateral_asset,
-                Account::from(storage.vault.read()),
-                // @TODO: potential revert here
-                u64::try_from(amount_out).unwrap()
-            );
-        }
-
-        let router = abi(Router, storage.router.read().value);
-        router.plugin_increase_position(
-            order.account,
-            order.collateral_asset,
-            order.index_asset,
-            order.size_delta,
-            order.is_long
-        );
-
-        // pay execution_fee to executor
-        _transfer_out_eth(Account::from(fee_receiver), order.execution_fee);
-
-        log(ExecuteIncreaseOrder {
-            account: order.account,
+        _execute_increase_order(
+            account,
             order_index,
-            purchase_asset: order.purchase_asset,
-            purchase_asset_amount: order.purchase_asset_amount,
-            collateral_asset: order.collateral_asset,
-            index_asset: order.index_asset,
-            is_long: order.is_long,
-            size_delta: order.size_delta,
-            trigger_price: order.trigger_price,
-            trigger_above_threshold: order.trigger_above_threshold,
-            execution_fee: order.execution_fee,
-            execution_price: current_price
-        });
+            fee_receiver
+        );
     }
 
     #[payable]
@@ -506,7 +315,7 @@ impl Orderbook for Contract {
         trigger_above_threshold: bool,
     ) {
         require(
-            msg_asset_id() == BASE_ASSET_ID,
+            msg_asset_id() == AssetId::base(),
             Error::OrderBookInvalidAssetForwarded
         );
 
@@ -516,7 +325,7 @@ impl Orderbook for Contract {
         );
 
         _create_decrease_order(
-            get_address_or_revert(),
+            get_sender(),
             collateral_asset,
             collateral_delta,
             index_asset,
@@ -529,93 +338,20 @@ impl Orderbook for Contract {
 
     #[storage(read, write)]
     fn execute_decrease_order(
-        account: Address,
+        account: Account,
         order_index: u64,
-        fee_receiver: Address
+        fee_receiver: Account
     ) {
-        let order = storage.decrease_orders.get(account).get(order_index)
-            .try_read().unwrap_or(DecreaseOrder::default());
-        
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        );
-
-        // decrease long should use min price
-        // decrease short should use max price
-        let (current_price, _) = _validate_position_order_price(
-            order.trigger_above_threshold,
-            order.trigger_price,
-            order.index_asset,
-            !order.is_long,
-            true
-        );
-
-        storage.decrease_orders.get(account).remove(order_index);
-
-        let router = abi(Router, storage.router.read().value);
-        let amount_out = router.plugin_decrease_position(
-            order.account,
-            order.collateral_asset,
-            order.index_asset,
-            order.collateral_delta,
-            order.size_delta,
-            order.is_long,
-            Account::from(contract_id())
-        );
-
-        // transfer released collateral to user
-        transfer_assets(
-            order.collateral_asset,
-            Account::from(order.account),
-            // @TODO: potential revert here
-            u64::try_from(amount_out).unwrap()
-        );
-
-        // pay executor
-        _transfer_out_eth(Account::from(fee_receiver), order.execution_fee);
-
-        log(ExecuteDecreaseOrder {
-            account: order.account,
+        _execute_decrease_order(
+            account,
             order_index,
-            collateral_asset: order.collateral_asset,
-            collateral_delta: order.collateral_delta,
-            index_asset: order.index_asset,
-            size_delta: order.size_delta,
-            is_long: order.is_long,
-            trigger_price: order.trigger_price,
-            trigger_above_threshold: order.trigger_above_threshold,
-            execution_fee: order.execution_fee,
-            execution_price: current_price
-        });
+            fee_receiver
+        )
     }
 
     #[storage(read, write)]
     fn cancel_decrease_order(order_index: u64) {
-        let order = storage.decrease_orders.get(get_address_or_revert()).get(order_index)
-            .try_read().unwrap_or(DecreaseOrder::default());
-        
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        );
-
-        storage.decrease_orders.get(get_address_or_revert()).remove(order_index);
-
-        _transfer_out_eth(get_sender(), order.execution_fee);
-
-        log(CancelDecreaseOrder {
-            account: order.account,
-            order_index,
-            collateral_asset: order.collateral_asset,
-            collateral_delta: order.collateral_delta,
-            index_asset: order.index_asset,
-            size_delta: order.size_delta,
-            is_long: order.is_long,
-            trigger_price: order.trigger_price,
-            trigger_above_threshold: order.trigger_above_threshold,
-            execution_fee: order.execution_fee
-        });
+        _cancel_decrease_order(order_index);
     }
 
     #[storage(read, write)]
@@ -626,32 +362,13 @@ impl Orderbook for Contract {
         trigger_price: u256,
         trigger_above_threshold: bool
     ) {
-        let mut order = storage.decrease_orders.get(get_address_or_revert()).get(order_index)
-            .try_read().unwrap_or(DecreaseOrder::default());
-
-        require(
-            order.account != ZERO_ADDRESS,
-            Error::OrderBookOrderDoesntExist
-        );
-
-        order.trigger_price = trigger_price;
-        order.trigger_above_threshold = trigger_above_threshold;
-        order.size_delta = size_delta;
-        order.collateral_delta = collateral_delta;
-
-        storage.decrease_orders.get(get_address_or_revert()).insert(order_index, order);
-
-        log(UpdateDecreaseOrder {
-            account: get_address_or_revert(),
+        _update_decrease_order(
             order_index,
-            collateral_asset: order.collateral_asset,
             collateral_delta,
-            index_asset: order.index_asset,
-            is_long: order.is_long,
             size_delta,
             trigger_price,
             trigger_above_threshold
-        });
+        );
     }
 }
 
@@ -676,12 +393,13 @@ fn _validate_position_order_price(
     maximize_price: bool,
     raise: bool 
 ) -> (u256, bool) {
-    let vault = abi(Vault, storage.vault.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
 
     let current_price = if maximize_price {
-        vault.get_max_price(index_asset)
+        vault_utils.get_max_price(index_asset)
     } else {
-        vault.get_min_price(index_asset)
+        vault_utils.get_min_price(index_asset)
     };
 
     let is_price_valid = if trigger_above_threshold {
@@ -698,8 +416,110 @@ fn _validate_position_order_price(
 }
 
 #[storage(read, write)]
+fn _interm_create_increase_order(
+    path: Vec<AssetId>,
+    amount_in: u64,
+    index_asset: AssetId,
+    min_out: u64,
+    size_delta: u256,
+    collateral_asset: AssetId,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
+    should_wrap: bool
+) {
+    require(
+        msg_asset_id() == AssetId::base(),
+        Error::OrderBookInvalidAssetForwarded
+    );
+
+    require(
+        execution_fee >= storage.min_execution_fee.read(),
+        Error::OrderBookInsufficientExecutionFee
+    );
+
+    if (should_wrap) {
+        require(
+            path.get(0).unwrap() == AssetId::base(),
+            Error::OrderBookPath0ShouldBeETH
+        );
+        require(msg_amount() == execution_fee + amount_in, Error::OrderBookIncorrectValueTransferred);
+    } else {
+        require(msg_amount() == execution_fee, Error::OrderBookIncorrectExecutionFeeTransferred);
+        abi(Router, storage.router.read().into())
+            .plugin_transfer(
+                path.get(0).unwrap(),
+                get_sender(),
+                Account::from(ContractId::this()),
+                amount_in
+            );
+    }
+
+    let purchase_asset = path.get(path.len() - 1).unwrap();
+    let mut purchase_asset_amount: u256 = 0;
+    if path.len() > 1 {
+        let asset = path.get(0).unwrap();
+
+        require(
+            path.get(0).unwrap() != purchase_asset,
+            Error::OrderBookInvalidPath
+        );
+
+        require(
+            msg_asset_id() == asset,
+            Error::OrderBookInvalidMsgAsset
+        );
+
+        require(
+            msg_amount() == amount_in,
+            Error::OrderBookInvalidMsgAmount
+        );
+
+        transfer_assets(
+            asset,
+            Account::from(storage.vault.read()),
+            amount_in
+        );
+
+        purchase_asset_amount = _swap(
+            path,
+            min_out,
+            Account::from(ContractId::this())
+        );
+    } else {
+        purchase_asset_amount = amount_in.as_u256();
+    }
+
+    let vault = abi(Vault, storage.vault.read().into());
+    let vault_utils = abi(VaultUtils, vault.get_vault_utils().into());
+
+    let purchase_asset_amount_usd = vault_utils.asset_to_usd_min(
+        purchase_asset,
+        purchase_asset_amount
+    );
+    require(
+        purchase_asset_amount_usd >= storage.min_purchase_asset_amount_usd.read(),
+        Error::OrderBookInsufficientCollateral
+    );
+
+    _create_increase_order(
+        get_sender(),
+        purchase_asset,
+        purchase_asset_amount,
+        collateral_asset,
+        index_asset,
+        size_delta,
+        is_long,
+        trigger_price,
+        trigger_above_threshold,
+        execution_fee
+    );
+}
+
+#[storage(read, write)]
 fn _create_increase_order(
-    account: Address,
+    account: Account,
     purchase_asset: AssetId,
     purchase_asset_amount: u256,
     collateral_asset: AssetId,
@@ -711,7 +531,7 @@ fn _create_increase_order(
     execution_fee: u64,
 ) {
     let order_index = storage.increase_orders_index
-        .get(get_address_or_revert()).try_read().unwrap_or(0);
+        .get(get_sender()).try_read().unwrap_or(0);
 
     let order = IncreaseOrder {
         account,
@@ -743,10 +563,159 @@ fn _create_increase_order(
         execution_fee
     });
 }
+
+#[storage(read, write)]
+fn _execute_increase_order(
+    address: Account,
+    order_index: u64,
+    fee_receiver: Account
+) {
+    let order = storage.increase_orders.get(address).get(order_index)
+        .try_read().unwrap_or(IncreaseOrder::default());
+
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    ); 
+
+    // increase long should use max price
+    // increase short should use min price
+    let (current_price, _) = _validate_position_order_price(
+        order.trigger_above_threshold,
+        order.trigger_price,
+        order.index_asset,
+        order.is_long,
+        true
+    );
+
+    storage.increase_orders.get(address).remove(order_index);
+
+    transfer_assets(
+        order.purchase_asset,
+        Account::from(storage.vault.read()),
+        // @TODO: potential revert here
+        u64::try_from(order.purchase_asset_amount).unwrap()
+    );
+
+    if order.purchase_asset != order.collateral_asset {
+        let mut path: Vec<AssetId> = Vec::new();
+        path.push(order.purchase_asset);
+        path.push(order.collateral_asset);
+
+        let amount_out = _swap(
+            path,
+            0,
+            Account::from(ContractId::this())
+        );
+        transfer_assets(
+            order.collateral_asset,
+            Account::from(storage.vault.read()),
+            // @TODO: potential revert here
+            u64::try_from(amount_out).unwrap()
+        );
+    }
+
+    let router = abi(Router, storage.router.read().into());
+    router.plugin_increase_position(
+        order.account,
+        order.collateral_asset,
+        order.index_asset,
+        order.size_delta,
+        order.is_long
+    );
+
+    // pay execution_fee to executor
+    _transfer_out_eth(fee_receiver, order.execution_fee);
+
+    log(ExecuteIncreaseOrder {
+        account: order.account,
+        order_index,
+        purchase_asset: order.purchase_asset,
+        purchase_asset_amount: order.purchase_asset_amount,
+        collateral_asset: order.collateral_asset,
+        index_asset: order.index_asset,
+        is_long: order.is_long,
+        size_delta: order.size_delta,
+        trigger_price: order.trigger_price,
+        trigger_above_threshold: order.trigger_above_threshold,
+        execution_fee: order.execution_fee,
+        execution_price: current_price
+    });
+}
+
+#[storage(read, write)]
+fn _update_increase_order(
+    order_index: u64,
+    size_delta: u256,
+    trigger_price: u256,
+    trigger_above_threshold: bool
+) {
+    let mut order = storage.increase_orders.get(get_sender()).get(order_index)
+        .try_read().unwrap_or(IncreaseOrder::default());
+    
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    );
+
+    order.trigger_price = trigger_price;
+    order.trigger_above_threshold = trigger_above_threshold;
+    order.size_delta = size_delta;
+
+    storage.increase_orders.get(get_sender()).insert(order_index, order);
+
+    log(UpdateIncreaseOrder {
+        account: get_sender(),
+        order_index,
+        collateral_asset: order.collateral_asset,
+        index_asset: order.index_asset,
+        is_long: order.is_long,
+        size_delta,
+        trigger_price,
+        trigger_above_threshold
+    });
+}
+
+#[storage(read, write)]
+fn _cancel_increase_order(order_index: u64) {
+    let order = storage.increase_orders.get(get_sender()).get(order_index)
+        .try_read().unwrap_or(IncreaseOrder::default());
+
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    );
+
+    storage.increase_orders.get(get_sender()).remove(order_index);
+
+    transfer_assets(
+        order.purchase_asset,
+        get_sender(),
+        // @TODO: potential revert here
+        u64::try_from(order.purchase_asset_amount).unwrap()
+    );
+
+    // transfer execution fee
+    _transfer_out_eth(get_sender(), order.execution_fee);
+
+    log(CancelIncreaseOrder {
+        account: order.account,
+        order_index,
+        purchase_asset: order.purchase_asset,
+        purchase_asset_amount: order.purchase_asset_amount,
+        collateral_asset: order.collateral_asset,
+        index_asset: order.index_asset,
+        is_long: order.is_long,
+        size_delta: order.size_delta,
+        trigger_price: order.trigger_price,
+        trigger_above_threshold: order.trigger_above_threshold,
+        execution_fee: order.execution_fee
+    });
+}
  
 #[storage(read, write)]
 fn _create_decrease_order(
-    account: Address,
+    account: Account,
     collateral_asset: AssetId,
     collateral_delta: u256,
     index_asset: AssetId,
@@ -756,7 +725,7 @@ fn _create_decrease_order(
     trigger_above_threshold: bool,
 ) {
     let order_index = storage.decrease_orders_index
-        .get(get_address_or_revert()).try_read().unwrap_or(0);
+        .get(get_sender()).try_read().unwrap_or(0);
 
     let order = DecreaseOrder {
         account,
@@ -787,6 +756,133 @@ fn _create_decrease_order(
     });
 }
 
+#[storage(read, write)]
+fn _execute_decrease_order(
+    account: Account,
+    order_index: u64,
+    fee_receiver: Account
+) {
+    let order = storage.decrease_orders.get(account).get(order_index)
+        .try_read().unwrap_or(DecreaseOrder::default());
+    
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    );
+
+    // decrease long should use min price
+    // decrease short should use max price
+    let (current_price, _) = _validate_position_order_price(
+        order.trigger_above_threshold,
+        order.trigger_price,
+        order.index_asset,
+        !order.is_long,
+        true
+    );
+
+    storage.decrease_orders.get(account).remove(order_index);
+
+    let router = abi(Router, storage.router.read().into());
+    let amount_out = router.plugin_decrease_position(
+        order.account,
+        order.collateral_asset,
+        order.index_asset,
+        order.collateral_delta,
+        order.size_delta,
+        order.is_long,
+        Account::from(ContractId::this())
+    );
+
+    // transfer released collateral to user
+    transfer_assets(
+        order.collateral_asset,
+        order.account,
+        // @TODO: potential revert here
+        u64::try_from(amount_out).unwrap()
+    );
+
+    // pay executor
+    _transfer_out_eth(fee_receiver, order.execution_fee);
+
+    log(ExecuteDecreaseOrder {
+        account: order.account,
+        order_index,
+        collateral_asset: order.collateral_asset,
+        collateral_delta: order.collateral_delta,
+        index_asset: order.index_asset,
+        size_delta: order.size_delta,
+        is_long: order.is_long,
+        trigger_price: order.trigger_price,
+        trigger_above_threshold: order.trigger_above_threshold,
+        execution_fee: order.execution_fee,
+        execution_price: current_price
+    });
+}
+
+#[storage(read, write)]
+fn _cancel_decrease_order(order_index: u64) {
+    let order = storage.decrease_orders.get(get_sender()).get(order_index)
+        .try_read().unwrap_or(DecreaseOrder::default());
+    
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    );
+
+    storage.decrease_orders.get(get_sender()).remove(order_index);
+
+    _transfer_out_eth(get_sender(), order.execution_fee);
+
+    log(CancelDecreaseOrder {
+        account: order.account,
+        order_index,
+        collateral_asset: order.collateral_asset,
+        collateral_delta: order.collateral_delta,
+        index_asset: order.index_asset,
+        size_delta: order.size_delta,
+        is_long: order.is_long,
+        trigger_price: order.trigger_price,
+        trigger_above_threshold: order.trigger_above_threshold,
+        execution_fee: order.execution_fee
+    });
+}
+
+#[storage(read, write)]
+fn _update_decrease_order(
+    order_index: u64,
+    collateral_delta: u256,
+    size_delta: u256,
+    trigger_price: u256,
+    trigger_above_threshold: bool
+) {
+    let mut order = storage.decrease_orders.get(get_sender()).get(order_index)
+        .try_read().unwrap_or(DecreaseOrder::default());
+
+    require(
+        order.account != ZERO_ACCOUNT,
+        Error::OrderBookOrderDoesntExist
+    );
+
+    order.trigger_price = trigger_price;
+    order.trigger_above_threshold = trigger_above_threshold;
+    order.size_delta = size_delta;
+    order.collateral_delta = collateral_delta;
+
+    storage.decrease_orders.get(get_sender()).insert(order_index, order);
+
+    log(UpdateDecreaseOrder {
+        account: get_sender(),
+        order_index,
+        collateral_asset: order.collateral_asset,
+        collateral_delta,
+        index_asset: order.index_asset,
+        is_long: order.is_long,
+        size_delta,
+        trigger_price,
+        trigger_above_threshold
+    });
+}
+
 #[storage(read)]
 fn _swap(
     path: Vec<AssetId>,
@@ -809,7 +905,7 @@ fn _swap(
             path.get(0).unwrap(),
             path.get(1).unwrap(),
             0,
-            Account::from(contract_id())
+            Account::from(ContractId::this())
         );
 
         transfer_assets(
@@ -841,14 +937,14 @@ fn _vault_swap(
 ) -> u256 {
     let mut amount_out: u256 = 0;
 
-    let vault = abi(Vault, storage.vault.read().value);
+    let vault = abi(Vault, storage.vault.read().into());
 
-    if asset_in == storage.usdg.read() {
-        // buy USDG
-        amount_out = vault.buy_usdg(asset_in, receiver);
-    } else if asset_out == storage.usdg.read() {
-        // sell USDG
-        amount_out = vault.sell_usdg(asset_out, receiver);
+    if asset_in == storage.rusd.read() {
+        // buy RUSD
+        amount_out = vault.buy_rusd(asset_in, receiver);
+    } else if asset_out == storage.rusd.read() {
+        // sell RUSD
+        amount_out = vault.sell_rusd(asset_out, receiver);
     } else { 
         // swap
         amount_out = vault.swap(asset_in, asset_out, receiver).as_u256();
@@ -864,7 +960,7 @@ fn _transfer_out_eth(
     amount_out: u64
 ) {
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         receiver,
         amount_out
     );

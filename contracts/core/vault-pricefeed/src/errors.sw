@@ -11,6 +11,7 @@ pub enum Error {
 
     VaultPriceFeedInvalidPrice: (),
     VaultPriceFeedInvalidPriceFeed: (),
+    VaultPriceFeedInvalidPriceFeedToUpdate: (),
 
     VaultPriceFeedInvalidPriceIEq0: (),
     VaultPriceFeedInvalidPriceINeq0: (),

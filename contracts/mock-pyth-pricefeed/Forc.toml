@@ -1,0 +1,9 @@
+[project]
+authors = ["@jasmcaus", "@xburralabs"]
+entry = "main.sw"
+license = "Apache-2.0"
+name = "mock-pyth-pricefeed"
+
+[dependencies]
+helpers = { path = "../helpers" }
+interfaces = { path = "../interfaces" }

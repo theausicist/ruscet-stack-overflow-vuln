@@ -1,9 +1,9 @@
 export type Address = {
-    value: string
+    bits: string
 }
 
 export type ContractId = {
-    value: string
+    bits: string
 }
 
 export type Account = {
@@ -22,14 +22,14 @@ export type AddressAccount = {
 }
 
 export type Identity = {
-    ContractId?: { value: string }
-    Address?: { value: string }
+    ContractId?: { bits: string }
+    Address?: { bits: string }
 }
 
 export type ContractIdentity = {
-    ContractId?: { value: string }
+    ContractId?: { bits: string }
 }
 
 export type AddressIdentity = {
-    Address?: { value: string }
+    Address?: { bits: string }
 }

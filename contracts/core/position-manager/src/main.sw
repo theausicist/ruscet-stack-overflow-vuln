@@ -14,20 +14,10 @@ mod events;
 mod errors;
 
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
+    call_frames::msg_asset_id,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
 use std::hash::*;
 use core_interfaces::{
@@ -55,40 +45,26 @@ storage {
     base_position_manager: ContractId = ZERO_CONTRACT,
     vault: ContractId = ZERO_CONTRACT,
     router: ContractId = ZERO_CONTRACT,
-    orderbook: ContractId = ZERO_CONTRACT,
 
-    is_order_keeper: StorageMap<Address, bool> = StorageMap::<Address, bool> {},
-    is_partner: StorageMap<Address, bool> = StorageMap::<Address, bool> {},
-    is_liquidator: StorageMap<Address, bool> = StorageMap::<Address, bool> {},
+    is_order_keeper: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
+    is_partner: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
+    is_liquidator: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
 }
 
 impl PositionManager for Contract {
     #[storage(read, write)]
     fn initialize(
+        base_position_manager: ContractId,
         vault: ContractId,
-        vault_storage: ContractId,
         router: ContractId,
-        shorts_tracker: ContractId,
-        deposit_fee: u64,
-        orderbook: ContractId,
-        base_position_manager: ContractId
     ) {
         require(!storage.is_initialized.read(), Error::PositionManagerAlreadyInitialized);
         storage.is_initialized.write(true);
 
         storage.gov.write(get_sender());
         storage.base_position_manager.write(base_position_manager);
-        storage.router.write(router);
         storage.vault.write(vault);
-
-        abi(BasePositionManager, base_position_manager.value).initialize(
-            get_sender(),
-            vault,
-            vault_storage,
-            router,
-            shorts_tracker,
-            deposit_fee
-        );
+        storage.router.write(router);
     }
 
     /*
@@ -99,10 +75,10 @@ impl PositionManager for Contract {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(read, write)]
-    fn set_order_keeper(order_keeper: Address, is_active: bool) {
+    fn set_order_keeper(order_keeper: Account, is_active: bool) {
         _only_gov();
 
-        require(order_keeper != ZERO_ADDRESS, Error::PositionManagerOrderKeeperZero);
+        require(order_keeper != ZERO_ACCOUNT, Error::PositionManagerOrderKeeperZero);
         storage.is_order_keeper.insert(order_keeper, is_active);
 
         log(SetOrderKeeper {
@@ -112,10 +88,10 @@ impl PositionManager for Contract {
     }
 
     #[storage(read, write)]
-    fn set_liquidator(liquidator: Address, is_active: bool) {
+    fn set_liquidator(liquidator: Account, is_active: bool) {
         _only_gov();
 
-        require(liquidator != ZERO_ADDRESS, Error::PositionManagerLiquidatorZero);
+        require(liquidator != ZERO_ACCOUNT, Error::PositionManagerLiquidatorZero);
         storage.is_liquidator.insert(liquidator, is_active);
 
         log(SetLiquidator {
@@ -125,10 +101,10 @@ impl PositionManager for Contract {
     }
 
     #[storage(read, write)]
-    fn set_partner(partner: Address, is_active: bool) {
+    fn set_partner(partner: Account, is_active: bool) {
         _only_gov();
 
-        require(partner != ZERO_ADDRESS, Error::PositionManagerPartnerZero);
+        require(partner != ZERO_ACCOUNT, Error::PositionManagerPartnerZero);
         storage.is_partner.insert(partner, is_active);
 
         log(SetPartner {
@@ -157,6 +133,13 @@ impl PositionManager for Contract {
         log(SetShouldValidatorIncreaseOrder { should_validator_increase_order });
     }
 
+    /*
+          ____ __     ___               
+         / / / \ \   / (_) _____      __
+        / / /   \ \ / /| |/ _ \ \ /\ / /
+       / / /     \ V / | |  __/\ V  V / 
+      /_/_/       \_/  |_|\___| \_/\_/  
+    */
     #[storage(read)]
     fn get_base_position_manager() -> ContractId {
         storage.base_position_manager.read()
@@ -170,7 +153,7 @@ impl PositionManager for Contract {
       /_/_/    |_|    \__,_|_.__/|_|_|\___|
     */
     #[payable]
-    #[storage(read, write)]
+    #[storage(read)]
     fn increase_position(
         path: Vec<AssetId>,
         index_asset: AssetId,
@@ -191,11 +174,11 @@ impl PositionManager for Contract {
 
         let base_position_manager = abi(
             BasePositionManager, 
-            storage.base_position_manager.read().value
+            storage.base_position_manager.read().into()
         );
 
         if amount_in > 0 {
-            let router = abi(Router, storage.router.read().value);
+            let router = abi(Router, storage.router.read().into());
 
             let asset_id = path.get(0).unwrap();
 
@@ -211,21 +194,21 @@ impl PositionManager for Contract {
 
             if path.len() == 1 {
                 router.plugin_transfer{
-                    asset_id: asset_id.value,
+                    asset_id: asset_id.into(),
                     coins: amount_in
                 }(
                     asset_id,
-                    get_address_or_revert(),
-                    Account::from(contract_id()),
+                    get_sender(),
+                    Account::from(ContractId::this()),
                     amount_in
                 );
             } else {
                 router.plugin_transfer{
-                    asset_id: asset_id.value,
+                    asset_id: asset_id.into(),
                     coins: amount_in
                 }(
                     asset_id,
-                    get_address_or_revert(),
+                    get_sender(),
                     Account::from(storage.vault.read()),
                     amount_in
                 );
@@ -233,15 +216,15 @@ impl PositionManager for Contract {
                 amount_in = base_position_manager.swap(
                     path,
                     min_out,
-                    Account::from(contract_id())
+                    Account::from(ContractId::this())
                 );
             }
 
             let after_fee_amount = base_position_manager.collect_fees{
-                asset_id: path.get(path.len() - 1).unwrap().value,
+                asset_id: path.get(path.len() - 1).unwrap().into(),
                 coins: amount_in
             }(
-                get_address_or_revert(),
+                get_sender(),
                 path,
                 amount_in,
                 index_asset,
@@ -257,7 +240,7 @@ impl PositionManager for Contract {
         }
 
         base_position_manager.increase_position(
-            get_address_or_revert(),
+            get_sender(),
             path.get(path.len() - 1).unwrap(),
             index_asset,
             size_delta,
@@ -283,7 +266,7 @@ fn _only_gov() {
 #[storage(read)]
 fn _only_order_keeper() {
     require(
-        storage.is_order_keeper.get(get_address_or_revert())
+        storage.is_order_keeper.get(get_sender())
             .try_read().unwrap_or(false),
         Error::PositionManagerOnlyOrderKeeper
     );
@@ -292,7 +275,7 @@ fn _only_order_keeper() {
 #[storage(read)]
 fn _only_liquidator() {
     require(
-        storage.is_liquidator.get(get_address_or_revert()).try_read().unwrap_or(false),
+        storage.is_liquidator.get(get_sender()).try_read().unwrap_or(false),
         Error::PositionManagerOnlyLiquidator
     );
 }
@@ -300,7 +283,7 @@ fn _only_liquidator() {
 #[storage(read)]
 fn _only_partners_or_legacy_mode() {
     require(
-        storage.is_partner.get(get_address_or_revert()).try_read().unwrap_or(false) ||
+        storage.is_partner.get(get_sender()).try_read().unwrap_or(false) ||
         storage.in_legacy_mode.read(),
         Error::PositionManagerOnlyPartnerOrLegacyMode
     );

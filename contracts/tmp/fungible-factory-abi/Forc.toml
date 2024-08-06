@@ -1,7 +1,0 @@
-[project]
-authors = ["Burra Labs @vandhazel", "@jasmcaus"]
-entry = "fungible_factory_abi.sw"
-license = "Apache 2.0"
-name = "fungible_factory_abi"
-
-[dependencies]

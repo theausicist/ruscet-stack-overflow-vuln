@@ -1,6 +1,6 @@
 import { Assertion, Chai } from "chai"
 import { consoleLogger } from "./log"
-import { formatComplexObject } from "./utils"
+import { formatComplexObject, formatObj } from "./utils"
 type MaybePromise<T> = T | Promise<T>
 type TransactionResponse = any
 
@@ -12,8 +12,8 @@ export function useChai(chai_: Chai.ChaiStatic, utils: Chai.ChaiUtils) {
     supportRevertedWith(chai_.Assertion)
 }
 
-function getFirstString(arr) {
-    for (const item of arr) {
+function getFirstString(arr: any[]) {
+    for (const item of Array.from(arr).reverse()) {
         if (typeof item === "string") {
             return item
         }
@@ -41,13 +41,14 @@ export function supportRevertedWith(Assertion: Chai.AssertionStatic) {
             )
 
         const onError = (error: any) => {
-            // console.log("Error:", error, "Logs", error?.logs, error.toString().includes("ArithmeticOverflow"))
+            // console.error("Logs", error?.metadata?.logs)
             // console.log("\nRevertresearon:", revertReason)
 
             const errString = error.toString()
 
             let revertString = ""
-            let logs = error?.logs ?? ([] as string[])
+            let logs = error?.metadata?.logs ?? ([] as string[])
+            // console.error("Logs", logs)
 
             if (logs.length > 0) {
                 revertString = getFirstString(logs)

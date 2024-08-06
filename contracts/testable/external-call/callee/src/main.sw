@@ -1,37 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 contract;
 
+mod errors;
 use std::{
-    auth::msg_sender,
     block::timestamp,
-    call_frames::{
-        contract_id,
-        msg_asset_id,
-    },
-    constants::BASE_ASSET_ID,
     context::*,
 	identity::Identity,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
 };
-use helpers::utils::get_sender;
+use std::auth::msg_sender;
+use ::errors::*;
 
 abi Callee {
 	fn get_sender() -> (bool, bool);
+
+	#[storage(read, write)]
+    fn call_me_fail();
+}
+
+storage {
+	one: u64 = 1,
+	two: u64 = 2,
+	three: u64 = 3,
 }
 
 impl Callee for Contract {
 	fn get_sender() -> (bool, bool) {
-		let sender = get_sender();
-
-		if !sender.is_contract {
-			(true, false)
-		} else {
-			(false, true)
-		}
+		(true, false)
 	}
+
+    #[storage(read, write)]
+    fn call_me_fail() {
+		storage.one.write(60);
+
+        require(
+            false, 
+            Error::CalleeError5
+        );
+
+		storage.two.write(49);
+		storage.three.write(49);
+    }
 }
