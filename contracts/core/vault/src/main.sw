@@ -4,6 +4,7 @@ contract;
 mod events;
 mod constants;
 mod utils;
+mod internal;
 mod errors;
 
 /*
@@ -50,11 +51,11 @@ use asset_interfaces::usdg::USDG;
 use events::*;
 use constants::*;
 use errors::*;
+use internal::*;
 use utils::{
     update_cumulative_funding_rate as utils_update_cumulative_funding_rate,
     validate_decrease_position as utils_validate_decrease_position,
     validate_increase_position as utils_validate_increase_position,
-    _sell_usdg
 };
 
 storage {
@@ -246,17 +247,18 @@ impl Vault for Contract {
     //         index_asset,
     //         is_long,
     //         size_delta
+    // storage.storj.read()
     //     )
     // }
 
     // // #[storage(read)]
     // // fn get_max_price(asset: AssetId) -> u256 {
-    // //     _get_max_price(asset)
+    // //     _get_max_price(asset, storage.storj.read())
     // // }
 
     // // #[storage(read)]
     // // fn get_min_price(asset: AssetId) -> u256 {
-    // //     _get_min_price(asset)
+    // //     _get_min_price(asset, storage.storj.read())
     // // }
 
     // // #[storage(read)]
@@ -435,7 +437,7 @@ impl Vault for Contract {
 
     //     _update_cumulative_funding_rate(asset, asset);
 
-    //     let price = _get_min_price(asset);
+    //     let price = _get_min_price(asset, storage.storj.read());
     //     let usdg = storj.get_usdg();
 
     //     let mut usdg_amount = asset_amount.as_u256() * price / PRICE_PRECISION;
@@ -483,7 +485,7 @@ impl Vault for Contract {
 
     #[storage(read, write)]
     fn sell_usdg(asset: AssetId, receiver: Account) -> u256 {
-        _sell_usdg(asset, receiver, storage.storj.read())
+        _sell_usdg(asset, receiver)
     }
 
     #[payable]
@@ -493,75 +495,7 @@ impl Vault for Contract {
         asset_out: AssetId,
         receiver: Account
     ) -> u64 {
-        let storj = abi(VaultStorage, storage.storj.read().into());
-
-        require(
-            storj.is_swap_enabled(),
-            Error::VaultSwapsNotEnabled
-        );
-        require(
-            storj.is_asset_whitelisted(asset_in),
-            Error::VaultAssetInNotWhitelisted
-        );
-        require(
-            storj.is_asset_whitelisted(asset_out),
-            Error::VaultAssetOutNotWhitelisted
-        );
-        require(asset_in != asset_out, Error::VaultAssetsAreEqual);
-
-        storj.write_use_swap_pricing(true);
-
-        _update_cumulative_funding_rate(asset_in, asset_in);
-        _update_cumulative_funding_rate(asset_out, asset_out);
-
-        let amount_in = _transfer_in(asset_in).as_u256();
-        require(amount_in > 0, Error::VaultInvalidAmountIn);
-
-        let price_in = _get_min_price(asset_in);
-        let price_out = _get_max_price(asset_out);
-
-        let mut amount_out = amount_in * price_in / price_out;
-        amount_out = _adjust_for_decimals(amount_out, asset_in, asset_out);
-
-        // adjust usdgAmounts by the same usdgAmount as debt is shifted between the assets
-        let mut usdg_amount = amount_in * price_in / PRICE_PRECISION;
-        usdg_amount = _adjust_for_decimals(usdg_amount, asset_in, storj.get_usdg());
-
-        let fee_basis_points = _get_swap_fee_basis_points(
-            asset_in, 
-            asset_out, 
-            usdg_amount,
-        );
-
-        let amount_out_after_fees = _collect_swap_fees(
-            asset_out, 
-            u64::try_from(amount_out).unwrap(),
-            u64::try_from(fee_basis_points).unwrap()
-        );
-
-        _increase_usdg_amount(asset_in, usdg_amount);
-        _decrease_usdg_amount(asset_out, usdg_amount);
-
-        _increase_pool_amount(asset_in, amount_in);
-        _decrease_pool_amount(asset_out, amount_out);
-
-        _validate_buffer_amount(asset_out);
-
-        _transfer_out(asset_out, amount_out_after_fees, receiver);
-
-        // log(Swap {
-        //     account: Address::from(receiver.into()),
-        //     asset_in,
-        //     asset_out,
-        //     amount_in,
-        //     amount_out,
-        //     amount_out_after_fees: amount_out_after_fees.as_u256(),
-        //     fee_basis_points,
-        // });
-
-        storj.write_use_swap_pricing(false);
-
-        amount_out_after_fees
+        _swap(asset_in, asset_out, receiver)
     }
 
     #[payable]
@@ -579,8 +513,8 @@ impl Vault for Contract {
             storj.is_leverage_enabled(),
             Error::VaultLeverageNotEnabled
         );
-        _validate_router(Account::from(account));
-        _validate_assets(collateral_asset, index_asset, is_long);
+        _validate_router(Account::from(account), storage.storj.read());
+        _validate_assets(collateral_asset, index_asset, is_long, storage.storj.read());
 
         utils_validate_increase_position(
             account,
@@ -602,9 +536,9 @@ impl Vault for Contract {
         let mut position = storj.get_position(position_key);
 
         let price = if is_long {
-            _get_max_price(index_asset)
+            _get_max_price(index_asset, storage.storj.read())
         } else {
-            _get_min_price(index_asset)
+            _get_min_price(index_asset, storage.storj.read())
         };
 
         if position.size == 0 {
@@ -619,7 +553,8 @@ impl Vault for Contract {
                 is_long,
                 price,
                 size_delta,
-                position.last_increased_time
+                position.last_increased_time,
+                storage.storj.read()
             );
         }
 
@@ -630,7 +565,7 @@ impl Vault for Contract {
             is_long,
             size_delta,
             position.size,
-            position.entry_funding_rate,
+            position.entry_funding_rate
         );
 
         let collateral_delta = _transfer_in(collateral_asset).as_u256();
@@ -697,7 +632,8 @@ impl Vault for Contract {
                 let new_price = _get_next_global_short_average_price(
                     index_asset,
                     price,
-                    size_delta
+                    size_delta,
+                    storage.storj.read()
                 );
 
                 storj.write_global_short_average_prices(index_asset, new_price);
@@ -742,7 +678,7 @@ impl Vault for Contract {
         is_long: bool,
         receiver: Account
     ) -> u256 {
-        _validate_router(Account::from(account));
+        _validate_router(Account::from(account), storage.storj.read());
         _decrease_position(
             account,
             collateral_asset,
@@ -835,9 +771,9 @@ impl Vault for Contract {
         }
 
         let mark_price = if is_long {
-            _get_min_price(index_asset)
+            _get_min_price(index_asset, storage.storj.read())
         } else {
-            _get_max_price(index_asset)
+            _get_max_price(index_asset, storage.storj.read())
         };
 
         // log(LiquidatePosition {
@@ -1213,36 +1149,6 @@ fn _adjust_for_decimals(amount: u256, asset_div: AssetId, asset_mul: AssetId) ->
 }
 
 #[storage(read)]
-fn _get_max_price(asset: AssetId) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let vault_pricefeed = abi(VaultPricefeed, storj.get_pricefeed_provider().into());
-    let include_amm_price = storj.get_include_amm_price();
-    let use_swap_pricing = storj.get_use_swap_pricing();
-    vault_pricefeed.get_price(
-        asset, 
-        true,
-        include_amm_price,
-        use_swap_pricing
-    )
-}
-
-#[storage(read)]
-fn _get_min_price(asset: AssetId) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let vault_pricefeed = abi(VaultPricefeed, storj.get_pricefeed_provider().into());
-    let include_amm_price = storj.get_include_amm_price();
-    let use_swap_pricing = storj.get_use_swap_pricing();
-    vault_pricefeed.get_price(
-        asset, 
-        false,
-        include_amm_price,
-        use_swap_pricing
-    )
-}
-
-#[storage(read)]
 fn _asset_to_usd_min(asset: AssetId, asset_amount: u256) -> u256 {
     let storj = abi(VaultStorage, storage.storj.read().into());
     
@@ -1250,7 +1156,7 @@ fn _asset_to_usd_min(asset: AssetId, asset_amount: u256) -> u256 {
         return 0;
     }
 
-    let price = _get_min_price(asset);
+    let price = _get_min_price(asset, storage.storj.read());
     let decimals = storj.get_asset_decimals(asset);
 
     (asset_amount * price) / 10.pow(decimals.as_u32()).as_u256()
@@ -1263,7 +1169,7 @@ fn _usd_to_asset_max(asset: AssetId, usd_amount: u256) -> u256 {
     }
 
     // @notice this is CORRECT (asset_max -> get_min_price)
-    let price = _get_min_price(asset);
+    let price = _get_min_price(asset, storage.storj.read());
 
     _usd_to_asset(asset, usd_amount, price)
 }
@@ -1275,7 +1181,7 @@ fn _usd_to_asset_min(asset: AssetId, usd_amount: u256) -> u256 {
     }
 
     // @notice this is CORRECT (asset_min -> get_max_price)
-    let price = _get_max_price(asset);
+    let price = _get_max_price(asset, storage.storj.read());
 
     _usd_to_asset(asset, usd_amount, price)
 }
@@ -1296,87 +1202,10 @@ fn _usd_to_asset(asset: AssetId, usd_amount: u256, price: u256) -> u256 {
 }
 
 #[storage(read)]
-fn _get_target_usdg_amount(asset: AssetId) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let supply = abi(USDG, storj.get_usdg_contr().into()).total_supply();
-    if supply == 0 {
-        return 0;
-    }
-
-    let weight = storj.get_asset_weight(asset);
-
-    // @TODO: check if asset balance needs to be `u256`
-    // @TODO: check if this return cast is needed
-    (weight * supply / storj.get_total_asset_weights()).as_u256()
-}
-
-#[storage(read, write)]
-fn _collect_swap_fees(asset: AssetId, amount: u64, fee_basis_points: u64) -> u64 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let after_fee_amount = amount * (BASIS_POINTS_DIVISOR - fee_basis_points) / BASIS_POINTS_DIVISOR;
-    let fee_amount = amount - after_fee_amount;
-
-    let fee_reserve = storj.get_fee_reserves(asset);
-    storj.write_fee_reserves(asset, fee_reserve + fee_amount.as_u256());
-
-    // log(CollectSwapFees {
-    //     asset,
-    //     fee_usd: _asset_to_usd_min(asset, fee_amount.as_u256()),
-    //     fee_assets: fee_amount,
-    // });
-
-    after_fee_amount
-}
-
-#[storage(read, write)]
-fn _collect_margin_fees(
-    account: Address,
-    collateral_asset: AssetId,
-    index_asset: AssetId,
-    is_long: bool,
-    size_delta: u256,
-    size: u256,
-    entry_funding_rate: u256
-) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let fee_usd: u256 = _get_position_fee(
-        account,
-        collateral_asset,
-        index_asset,
-        is_long,
-        size_delta
-    ) + _get_funding_fee(
-        account,
-        collateral_asset,
-        index_asset,
-        is_long,
-        size,
-        entry_funding_rate
-    );
-
-    let fee_assets = _usd_to_asset_min(collateral_asset, fee_usd);
-    storj.write_fee_reserves(
-        collateral_asset,
-        storj.get_fee_reserves(collateral_asset) + fee_assets
-    );
-
-    // log(CollectMarginFees {
-    //     asset: collateral_asset,
-    //     fee_usd,
-    //     fee_assets,
-    // });
-
-    return fee_usd;
-}
-
-#[storage(read)]
 fn _get_redemption_amount(asset: AssetId, usdg_amount: u256) -> u256 {
     let storj = abi(VaultStorage, storage.storj.read().into());
 
-    let price = _get_max_price(asset);
+    let price = _get_max_price(asset, storage.storj.read());
     let redemption_amount = usdg_amount * PRICE_PRECISION / price;
 
     _adjust_for_decimals(redemption_amount, storj.get_usdg(), asset)
@@ -1406,106 +1235,6 @@ fn _update_asset_balance(asset: AssetId) {
     storj.write_asset_balances(asset, next_balance);
 }
 
-#[storage(read)]
-fn _validate_buffer_amount(asset: AssetId) {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-    
-    let pool_amount = storj.get_pool_amounts(asset);
-    let buffer_amount = storj.get_buffer_amounts(asset);
-
-    if pool_amount < buffer_amount {
-        require(false, Error::VaultPoolAmountLtBuffer);
-    }
-}
-
-#[storage(read)]
-fn _validate_router(account: Account) {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let sender = get_sender();
-
-    if sender == account || sender == Account::from(storj.get_router()) {
-        return;
-    }
-
-    require(
-        storj.is_approved_router(account, sender),
-        Error::VaultInvalidMsgCaller
-    );
-}
-
-fn _validate_position(size: u256, collateral: u256) {
-    if size == 0 {
-        require(
-            collateral == 0,
-            Error::VaultCollateralShouldBeWithdrawn
-        );
-        return;
-    }
-
-    require(
-        size >= collateral,
-        Error::VaultSizeMustBeMoreThanCollateral
-    );
-}
-
-#[storage(read)]
-fn _validate_assets(
-    collateral_asset: AssetId,
-    index_asset: AssetId,
-    is_long: bool,
-) {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    if is_long {
-        require(
-            collateral_asset == index_asset,
-            Error::VaultLongCollateralIndexAssetsMismatch
-        );
-        require(
-            storj.is_asset_whitelisted(collateral_asset),
-            Error::VaultLongCollateralAssetNotWhitelisted
-        );
-        require(
-            !storj.is_stable_asset(collateral_asset),
-            Error::VaultLongCollateralAssetMustNotBeStableAsset
-        );
-
-        return;
-    }
-
-    require(
-        storj.is_asset_whitelisted(collateral_asset),
-        Error::VaultShortCollateralAssetNotWhitelisted
-    );
-    require(
-        storj.is_stable_asset(collateral_asset),
-        Error::VaultShortCollateralAssetMustBeStableAsset
-    );
-    require(
-        !storj.is_stable_asset(index_asset),
-        Error::VaultShortIndexAssetMustNotBeStableAsset
-    );
-    require(
-        storj.is_shortable_asset(index_asset),
-        Error::VaultShortIndexAssetNotShortable
-    );
-}
-
-fn _get_position_key(
-    account: Address,
-    collateral_asset: AssetId,
-    index_asset: AssetId,
-    is_long: bool,
-) -> b256 {
-    keccak256(PositionKey {
-        account,
-        collateral_asset,
-        index_asset,
-        is_long,
-    })
-}
-
 // note that if calling this function independently the cumulativeFundingRates 
 // used in getFundingFee will not be the latest value
 #[storage(read)]
@@ -1532,7 +1261,8 @@ fn _validate_liquidation(
         position.size,
         position.average_price,
         is_long,
-        position.last_increased_time
+        position.last_increased_time,
+        storage.storj.read()
     );
 
     let mut margin_fees: u256 = _get_funding_fee(
@@ -1541,13 +1271,15 @@ fn _validate_liquidation(
         index_asset,
         is_long,
         position.size,
-        position.entry_funding_rate
+        position.entry_funding_rate,
+        storage.storj.read()
     ) + _get_position_fee(
         account,
         collateral_asset,
         index_asset,
         is_long,
         position.size,
+        storage.storj.read()
     );
 
     if !has_profit && position.collateral < delta {
@@ -1591,70 +1323,6 @@ fn _validate_liquidation(
     return (0, margin_fees);
 }
 
-// for longs:  next_average_price = (next_price * next_size) / (next_size + delta)
-// for shorts: next_average_price = (next_price * next_size) / (next_size - delta)
-#[storage(read)]
-fn _get_next_average_price(
-    index_asset: AssetId,
-    size: u256,
-    average_price: u256,
-    is_long: bool,
-    next_price: u256,
-    size_delta: u256,
-    last_increased_time: u64
-) -> u256 {
-    let (has_profit, delta) = _get_delta(
-        index_asset,
-        size,
-        average_price,
-        is_long,
-        last_increased_time
-    );
-
-    let next_size = size + size_delta;
-    let mut divisor = 0;
-    if is_long {
-        divisor = if has_profit { next_size + delta } else { next_size - delta }
-    } else {
-        divisor = if has_profit { next_size - delta } else { next_size + delta }
-    }
-
-    next_price * next_size / divisor
-}
-
-// for longs:  next_average_price = (next_price * next_size) / (next_size + delta)
-// for shorts: next_average_price = (next_price * next_size) / (next_size - delta)
-#[storage(read)]
-fn _get_next_global_short_average_price(
-    index_asset: AssetId,
-    next_price: u256,
-    size_delta: u256,
-) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let size = storj.get_global_short_sizes(index_asset);
-    let average_price = storj.get_global_short_average_prices(index_asset);
-    let has_profit = average_price > next_price;
-
-    let price_delta = if has_profit {
-        average_price - next_price
-    } else {
-        next_price - average_price
-    };
-
-    let delta = size * price_delta / average_price; 
-
-    let next_size = size + size_delta;
-
-    let divisor = if has_profit {
-        next_size - delta
-    } else {
-        next_size + delta
-    };
-
-    next_price * next_size / divisor
-}
-
 #[storage(read)]
 fn _get_global_short_delta(asset: AssetId) -> (bool, u256) {
     let storj = abi(VaultStorage, storage.storj.read().into());
@@ -1664,7 +1332,7 @@ fn _get_global_short_delta(asset: AssetId) -> (bool, u256) {
         return (false, 0);
     }
 
-    let next_price = _get_max_price(asset);
+    let next_price = _get_max_price(asset, storage.storj.read());
     let average_price = storj.get_global_short_average_prices(asset);
     let has_profit = average_price > next_price;
     let price_delta = if has_profit {
@@ -1699,57 +1367,9 @@ fn _get_position_delta(
         position.size,
         position.average_price,
         is_long,
-        position.last_increased_time
+        position.last_increased_time,
+        storage.storj.read()
     )
-}
-
-#[storage(read)]
-fn _get_delta(
-    index_asset: AssetId,
-    size: u256,
-    average_price: u256,
-    is_long: bool,
-    last_increased_time: u64
-) -> (bool, u256) {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    require(average_price > 0, Error::VaultInvalidAveragePrice);
-
-    let price = if is_long {
-        _get_min_price(index_asset)
-    } else {
-        _get_max_price(index_asset)
-    };
-
-    let price_delta = if average_price > price {
-        average_price - price
-    } else {
-        price - average_price
-    };
-
-    let mut delta = size * price_delta / average_price;
-
-    let mut has_profit = false;
-    if is_long {
-        has_profit = price > average_price;
-    } else {
-        has_profit = average_price > price;
-    }
-
-    // if the minProfitTime has passed then there will be no min profit threshold
-    // the min profit threshold helps to prevent front-running issues
-    let min_bps = if timestamp() > last_increased_time + storj.get_min_profit_time() {
-        0
-    } else {
-        storj.get_min_profit_basis_points(index_asset)
-    };
-
-    if has_profit
-        && (delta * BASIS_POINTS_DIVISOR.as_u256()) <= (size * min_bps.as_u256())
-    {
-        delta = 0;
-    }
-    (has_profit, delta)
 }
 
 #[storage(read)]
@@ -1761,50 +1381,6 @@ fn _get_entry_funding_rate(
     let storj = abi(VaultStorage, storage.storj.read().into());
 
     storj.get_cumulative_funding_rates(collateral_asset)
-}
-
-#[storage(read)]
-fn _get_funding_fee(
-    _account: Address,
-    collateral_asset: AssetId,
-    _index_asset: AssetId,
-    _is_long: bool,
-    size: u256,
-    entry_funding_rate: u256
-) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    if size == 0 {
-        return 0;
-    }
-
-    let mut funding_rate = storj.get_cumulative_funding_rates(collateral_asset);
-    funding_rate = funding_rate - entry_funding_rate;
-    if funding_rate == 0 {
-        return 0;
-    }
-
-    size * funding_rate / FUNDING_RATE_PRECISION
-}
-
-#[storage(read)]
-fn _get_position_fee(
-    _account: Address,
-    _collateral_asset: AssetId,
-    _index_asset: AssetId,
-    _is_long: bool,
-    size_delta: u256,
-) -> u256 {
-    let storj = abi(VaultStorage, storage.storj.read().into());
-
-    if size_delta == 0 {
-        return 0;
-    }
-
-    let mut after_fee_usd = size_delta * (BASIS_POINTS_DIVISOR - storj.get_margin_fee_basis_points()).as_u256();
-    after_fee_usd = after_fee_usd / BASIS_POINTS_DIVISOR.as_u256();
-
-    size_delta - after_fee_usd
 }
 
 #[storage(read, write)]
@@ -1884,9 +1460,9 @@ fn _decrease_position(
         }
 
         let price = if is_long {
-            _get_min_price(index_asset)
+            _get_min_price(index_asset, storage.storj.read())
         } else {
-            _get_max_price(index_asset)
+            _get_max_price(index_asset, storage.storj.read())
         };
 
         // log(DecreasePosition {
@@ -1919,9 +1495,9 @@ fn _decrease_position(
         }
 
         let price = if is_long {
-            _get_min_price(index_asset)
+            _get_min_price(index_asset, storage.storj.read())
         } else {
-            _get_max_price(index_asset)
+            _get_max_price(index_asset, storage.storj.read())
         };
 
         // log(DecreasePosition {
@@ -2010,7 +1586,8 @@ fn _reduce_collateral(
             position.size,
             position.average_price,
             is_long,
-            position.last_increased_time
+            position.last_increased_time,
+            storage.storj.read()
         );
         has_profit = _has_profit;
 
@@ -2093,7 +1670,8 @@ fn _get_buy_usdg_fee_basis_points(
         usdg_amount,
         storj.get_mint_burn_fee_basis_points().as_u256(),
         storj.get_tax_basis_points().as_u256(),
-        true
+        true,
+        storage.storj.read()
     )
 }
 
@@ -2109,121 +1687,242 @@ fn _get_sell_usdg_fee_basis_points(
         usdg_amount,
         storj.get_mint_burn_fee_basis_points().as_u256(),
         storj.get_tax_basis_points().as_u256(),
-        false
+        false,
+        storage.storj.read()
     )
 }
 
-#[storage(read)]
-fn _get_swap_fee_basis_points(
-    asset_in: AssetId,
-    asset_out: AssetId,
-    usdg_amount: u256
-) -> u256 {
+#[storage(read, write)]
+pub fn _sell_usdg(asset: AssetId, receiver: Account) -> u256 {
+    _validate_manager();
+    
     let storj = abi(VaultStorage, storage.storj.read().into());
-
-    let is_stableswap = storj.is_stable_asset(asset_in) && storj.is_stable_asset(asset_out);
-
-    let base_bps = if is_stableswap {
-        storj.get_stable_swap_fee_basis_points()
-    } else {
-        storj.get_swap_fee_basis_points()
-    };
-
-    let tax_bps = if is_stableswap {
-        storj.get_stable_tax_basis_points()
-    } else {
-        storj.get_tax_basis_points()
-    };
-
-    let fee_basis_points_0 = _get_fee_basis_points(
-        asset_in,
-        usdg_amount,
-        base_bps.as_u256(),
-        tax_bps.as_u256(),
-        true
-    );
-    let fee_basis_points_1 = _get_fee_basis_points(
-        asset_out,
-        usdg_amount,
-        base_bps.as_u256(),
-        tax_bps.as_u256(),
-        false
+    
+    require(
+        storj.is_asset_whitelisted(asset),
+        Error::VaultAssetNotWhitelisted
     );
 
-    // use the higher of the two fee basis points
-    if fee_basis_points_0 > fee_basis_points_1 {
-        fee_basis_points_0
-    } else {
-        fee_basis_points_1
-    }
+    storj.write_use_swap_pricing(true);
+
+    let usdg = storj.get_usdg();
+
+    let usdg_amount = _transfer_in(usdg).as_u256();
+    require(usdg_amount > 0, Error::VaultInvalidUsdgAmount);
+
+    _update_cumulative_funding_rate(asset, asset);
+
+    let redemption_amount = _get_redemption_amount(asset, usdg_amount);
+    require(redemption_amount > 0, Error::VaultInvalidRedemptionAmount);
+
+    _decrease_usdg_amount(asset, usdg_amount);
+    _decrease_pool_amount(asset, redemption_amount);
+
+    // require usdg_amount to be less than u64::max
+    require(
+        usdg_amount < u64::max().as_u256(),
+        Error::VaultInvalidUSDGBurnAmountGtU64Max
+    );
+
+    let _amount = u64::try_from(usdg_amount).unwrap();
+
+    abi(USDG, storj.get_usdg_contr().into()).burn{
+        // @TODO: this is prob a buggy implementation of the USDG native asset? 
+        asset_id: usdg.into(),
+        coins: _amount
+    }(
+        Account::from(ContractId::this()),
+        _amount
+    );
+
+    // the _transferIn call increased the value of tokenBalances[usdg]
+    // usually decreases in token balances are synced by calling _transferOut
+    // however, for UDFG, the assets are burnt, so _updateTokenBalance should
+    // be manually called to record the decrease in assets
+    _update_asset_balance(usdg);
+
+    let fee_basis_points = _get_sell_usdg_fee_basis_points(
+        asset,
+        usdg_amount,
+    );
+    let amount_out = _collect_swap_fees(
+        asset, 
+        u64::try_from(redemption_amount).unwrap(), 
+        u64::try_from(fee_basis_points).unwrap(), 
+        storage.storj.read()
+    );
+    require(amount_out > 0, Error::VaultInvalidAmountOut);
+
+    _transfer_out(asset, amount_out, receiver);
+
+    // log(SellUSDG {
+    //     account: Address::from(receiver.into()),
+    //     asset,
+    //     usdg_amount,
+    //     asset_amount: amount_out,
+    //     fee_basis_points,
+    // });
+
+    storj.write_use_swap_pricing(false);
+
+    amount_out.as_u256()
 }
 
-// cases to consider
-// 1. `initial_amount` is far from `target_amount`, action increases balance slightly => high rebate
-// 2. `initial_amount` is far from `target_amount`, action increases balance largely => high rebate
-// 3. `initial_amount` is close to `target_amount`, action increases balance slightly => low rebate
-// 4. `initial_amount` is far from `target_amount`, action reduces balance slightly => high tax
-// 5. `initial_amount` is far from `target_amount`, action reduces balance largely => high tax
-// 6. `initial_amount` is close to `target_amount`, action reduces balance largely => low tax
-// 7. `initial_amount` is above `target_amount`, nextAmount is below `target_amount` and vice versa
-// 8. a large swap should have similar fees as the same trade split into multiple smaller swaps
+// for longs:  next_average_price = (next_price * next_size) / (next_size + delta)
+// for shorts: next_average_price = (next_price * next_size) / (next_size - delta)
 #[storage(read)]
-fn _get_fee_basis_points(
-    asset: AssetId,
-    usdg_delta: u256,
-    fee_basis_points: u256,
-    tax_basis_points: u256,
-    should_increment: bool
+fn _get_next_average_price(
+    index_asset: AssetId,
+    size: u256,
+    average_price: u256,
+    is_long: bool,
+    next_price: u256,
+    size_delta: u256,
+    last_increased_time: u64,
+    storj_: ContractId
 ) -> u256 {
+    let (has_profit, delta) = _get_delta(
+        index_asset,
+        size,
+        average_price,
+        is_long,
+        last_increased_time,
+        storage.storj.read()
+    );
+
+    let next_size = size + size_delta;
+    let mut divisor = 0;
+    if is_long {
+        divisor = if has_profit { next_size + delta } else { next_size - delta }
+    } else {
+        divisor = if has_profit { next_size - delta } else { next_size + delta }
+    }
+
+    next_price * next_size / divisor
+}
+
+
+#[storage(read, write)]
+fn _collect_margin_fees(
+    account: Address,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    is_long: bool,
+    size_delta: u256,
+    size: u256,
+    entry_funding_rate: u256
+) -> u256 {
+    let storj_ = storage.storj.read();
+    let storj = abi(VaultStorage, storj_.into());
+
+    let fee_usd: u256 = _get_position_fee(
+        account,
+        collateral_asset,
+        index_asset,
+        is_long,
+        size_delta,
+        storj_
+    ) + _get_funding_fee(
+        account,
+        collateral_asset,
+        index_asset,
+        is_long,
+        size,
+        entry_funding_rate,
+        storj_
+    );
+
+    let fee_assets = _usd_to_asset_min(collateral_asset, fee_usd);
+    storj.write_fee_reserves(
+        collateral_asset,
+        storj.get_fee_reserves(collateral_asset) + fee_assets
+    );
+
+    // log(CollectMarginFees {
+    //     asset: collateral_asset,
+    //     fee_usd,
+    //     fee_assets,
+    // });
+
+    return fee_usd;
+}
+
+#[payable]
+#[storage(read, write)]
+fn _swap(
+    asset_in: AssetId,
+    asset_out: AssetId,
+    receiver: Account
+) -> u64 {
     let storj = abi(VaultStorage, storage.storj.read().into());
 
-    if !storj.has_dynamic_fees() {
-        return fee_basis_points;
-    }
+    require(
+        storj.is_swap_enabled(),
+        Error::VaultSwapsNotEnabled
+    );
+    require(
+        storj.is_asset_whitelisted(asset_in),
+        Error::VaultAssetInNotWhitelisted
+    );
+    require(
+        storj.is_asset_whitelisted(asset_out),
+        Error::VaultAssetOutNotWhitelisted
+    );
+    require(asset_in != asset_out, Error::VaultAssetsAreEqual);
 
-    let initial_amount = storj.get_usdg_amount(asset);
-    let mut next_amount = initial_amount + usdg_delta;
-    if !should_increment {
-        next_amount = if usdg_delta > initial_amount {
-            0
-        } else {
-            initial_amount - usdg_delta
-        };
-    }
+    storj.write_use_swap_pricing(true);
 
-    let target_amount = _get_target_usdg_amount(asset);
-    if target_amount == 0 {
-        return fee_basis_points;
-    }
+    _update_cumulative_funding_rate(asset_in, asset_in);
+    _update_cumulative_funding_rate(asset_out, asset_out);
 
-    let initial_diff = if initial_amount > target_amount {
-        initial_amount - target_amount
-    } else {
-        target_amount - initial_amount
-    };
+    let amount_in = _transfer_in(asset_in).as_u256();
+    require(amount_in > 0, Error::VaultInvalidAmountIn);
 
-    let next_diff = if next_amount > target_amount {
-        next_amount - target_amount
-    } else {
-        target_amount - next_amount
-    };
+    let price_in = _get_min_price(asset_in, storage.storj.read());
+    let price_out = _get_max_price(asset_out, storage.storj.read());
 
-    // action improves relative asset balance
-    if next_diff < initial_diff {
-        let rebate_bps = tax_basis_points * initial_diff / target_amount;
-        return if rebate_bps > fee_basis_points {
-            0
-        } else {
-            fee_basis_points - rebate_bps
-        };
-    }
+    let mut amount_out = amount_in * price_in / price_out;
+    amount_out = _adjust_for_decimals(amount_out, asset_in, asset_out);
 
-    let mut avg_diff = (initial_diff + next_diff) / 2;
-    if avg_diff > target_amount {
-        avg_diff = target_amount;
-    }
+    // adjust usdgAmounts by the same usdgAmount as debt is shifted between the assets
+    let mut usdg_amount = amount_in * price_in / PRICE_PRECISION;
+    usdg_amount = _adjust_for_decimals(usdg_amount, asset_in, storj.get_usdg());
 
-    let tax_bps = tax_basis_points * avg_diff / target_amount;
-    
-    fee_basis_points + tax_bps
+    let fee_basis_points = _get_swap_fee_basis_points(
+        asset_in, 
+        asset_out, 
+        usdg_amount,
+        storage.storj.read()
+    );
+
+    let amount_out_after_fees = _collect_swap_fees(
+        asset_out, 
+        u64::try_from(amount_out).unwrap(),
+        u64::try_from(fee_basis_points).unwrap(),
+        storage.storj.read()
+    );
+
+    _increase_usdg_amount(asset_in, usdg_amount);
+    _decrease_usdg_amount(asset_out, usdg_amount);
+
+    _increase_pool_amount(asset_in, amount_in);
+    _decrease_pool_amount(asset_out, amount_out);
+
+    _validate_buffer_amount(asset_out, storage.storj.read());
+
+    _transfer_out(asset_out, amount_out_after_fees, receiver);
+
+    // log(Swap {
+    //     account: Address::from(receiver.into()),
+    //     asset_in,
+    //     asset_out,
+    //     amount_in,
+    //     amount_out,
+    //     amount_out_after_fees: amount_out_after_fees.as_u256(),
+    //     fee_basis_points,
+    // });
+
+    storj.write_use_swap_pricing(false);
+
+    amount_out_after_fees
 }
