@@ -192,40 +192,40 @@ abi Vault {
     // #[storage(read, write)]
     // fn buy_usdg(asset: AssetId, receiver: Account) -> u256;
 
-    // #[storage(read, write)]
-    // fn sell_usdg(asset: AssetId, receiver: Account) -> u256;
+    #[storage(read, write)]
+    fn sell_usdg(asset: AssetId, receiver: Account) -> u256;
 
-    // #[payable]
-    // #[storage(read, write)]
-    // fn swap(asset_in: AssetId, asset_out: AssetId, receiver: Account) -> u64;
+    #[payable]
+    #[storage(read, write)]
+    fn swap(asset_in: AssetId, asset_out: AssetId, receiver: Account) -> u64;
 
-    // #[payable]
-    // #[storage(read, write)]
-    // fn increase_position(
-    //     account: Address,
-    //     collateral_asset: AssetId,
-    //     index_asset: AssetId,
-    //     size_delta: u256,
-    //     is_long: bool 
-    // );
+    #[payable]
+    #[storage(read, write)]
+    fn increase_position(
+        account: Address,
+        collateral_asset: AssetId,
+        index_asset: AssetId,
+        size_delta: u256,
+        is_long: bool 
+    );
 
-    // #[storage(read, write)]
-    // fn decrease_position(
-    //     account: Address,
-    //     collateral_asset: AssetId,
-    //     index_asset: AssetId,
-    //     collateral_delta: u256,
-    //     size_delta: u256,
-    //     is_long: bool,
-    //     receiver: Account
-    // ) -> u256;
+    #[storage(read, write)]
+    fn decrease_position(
+        account: Address,
+        collateral_asset: AssetId,
+        index_asset: AssetId,
+        collateral_delta: u256,
+        size_delta: u256,
+        is_long: bool,
+        receiver: Account
+    ) -> u256;
 
-    // #[storage(read, write)]
-    // fn liquidate_position(
-    //     account: Address,
-    //     collateral_asset: AssetId,
-    //     index_asset: AssetId,
-    //     is_long: bool,
-    //     fee_receiver: Account
-    // );
+    #[storage(read, write)]
+    fn liquidate_position(
+        account: Address,
+        collateral_asset: AssetId,
+        index_asset: AssetId,
+        is_long: bool,
+        fee_receiver: Account
+    );
 }

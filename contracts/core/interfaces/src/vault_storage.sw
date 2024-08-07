@@ -9,20 +9,20 @@ use helpers::{
 use std::hash::*;
 
 pub struct Position {
-    size: u256,
-    collateral: u256,
-    average_price: u256,
-    entry_funding_rate: u256,
-    reserve_amount: u256,
-    realized_pnl: Signed256,
-    last_increased_time: u64
+    pub size: u256,
+    pub collateral: u256,
+    pub average_price: u256,
+    pub entry_funding_rate: u256,
+    pub reserve_amount: u256,
+    pub realized_pnl: Signed256,
+    pub last_increased_time: u64
 }
 
 pub struct PositionKey {
-    account: Address,
-    collateral_asset: AssetId,
-    index_asset: AssetId,
-    is_long: bool,
+    pub account: Address,
+    pub collateral_asset: AssetId,
+    pub index_asset: AssetId,
+    pub is_long: bool,
 }
 
 
