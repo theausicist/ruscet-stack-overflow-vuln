@@ -244,7 +244,7 @@ fn _get_distribution_amount(account: Account) -> u64 {
     let amount = assets_per_interval * intervals;
 
     let balance = balance_of(
-        contract_id(),
+        ContractId::this(),
         // we want this to intentionally revert if there are no reward assets set for the account
         storage.reward_assets.get(account).read(),
     );

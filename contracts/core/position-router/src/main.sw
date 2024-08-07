@@ -19,7 +19,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     asset::{
@@ -437,7 +437,7 @@ impl PositionRouter for Contract {
             is_long,
             acceptable_price,
             execution_fee,
-            has_collateral_in_eth: path.get(0).unwrap() == BASE_ASSET_ID,
+            has_collateral_in_eth: path.get(0).unwrap() == AssetId::base(),
             callback_target,
             block_height: height(),
             block_time: timestamp()
@@ -583,7 +583,7 @@ fn _validate_execution_or_cancellation(
 ) -> (bool, bool) {
     let sender = get_sender();
     let is_keeper_call = 
-        (sender.is_contract && ContractId::from(sender.into()) == contract_id()) || 
+        (sender.is_contract && ContractId::from(sender.into()) == ContractId::this()) || 
         storage.is_position_keeper.get(Address::from(sender.into())).try_read().is_some();
     
     if !storage.is_leverage_enabled.read() && !is_keeper_call {
@@ -703,7 +703,7 @@ fn _execute_increase_position(
             amount_in = base_position_manager.swap(
                 request.path.to_vec(),
                 request.min_out,
-                Account::from(contract_id())
+                Account::from(ContractId::this())
             );
         }
 
@@ -742,7 +742,7 @@ fn _execute_increase_position(
 
     // transfer out executionfee to execution_fee_receiver
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         Account::from(execution_fee_receiver),
         request.execution_fee
     );
@@ -803,7 +803,7 @@ fn _cancel_increase_position(
     // @TODO: remove `has_collateral_in_eth` requirement
     if request.has_collateral_in_eth {
         transfer_assets(
-            BASE_ASSET_ID,
+            AssetId::base(),
             Account::from(request.account),
             request.amount_in
         );
@@ -817,7 +817,7 @@ fn _cancel_increase_position(
 
     // transfer out executionfee to execution_fee_receiver
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         Account::from(execution_fee_receiver),
         request.execution_fee
     );
@@ -883,7 +883,7 @@ fn _execute_decrease_position(
         request.collateral_delta,
         request.size_delta,
         request.is_long,
-        Account::from(contract_id()),
+        Account::from(ContractId::this()),
         request.acceptable_price
     );
     
@@ -899,7 +899,7 @@ fn _execute_decrease_position(
             amount_out = base_position_manager.swap(
                 request.path.to_vec(),
                 request.min_out,
-                Account::from(contract_id())
+                Account::from(ContractId::this())
             ).as_u256();
         }
 
@@ -912,7 +912,7 @@ fn _execute_decrease_position(
     }
 
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         Account::from(execution_fee_receiver),
         request.execution_fee
     );
@@ -972,7 +972,7 @@ fn _cancel_decrease_position(
     storage.decrease_position_requests.remove(key);
 
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         Account::from(execution_fee_receiver),
         request.execution_fee
     );

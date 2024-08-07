@@ -199,7 +199,7 @@ impl YieldAsset for Contract {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     fn get_id() -> AssetId {
-        AssetId::new(contract_id(), ZERO)
+        AssetId::new(ContractId::this(), ZERO)
     }
 
     #[storage(read)]
@@ -336,7 +336,7 @@ fn _burn(
     require(account != ZERO_ACCOUNT, Error::YieldAssetBurnFromZeroAccount);
 
     require(
-        msg_asset_id() == AssetId::new(contract_id(), ZERO),
+        msg_asset_id() == AssetId::new(ContractId::this(), ZERO),
         Error::YieldAssetInvalidBurnAssetForwarded
     );
     require(

@@ -20,7 +20,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     asset::{
@@ -216,7 +216,7 @@ impl PositionManager for Contract {
                 }(
                     asset_id,
                     get_address_or_revert(),
-                    Account::from(contract_id()),
+                    Account::from(ContractId::this()),
                     amount_in
                 );
             } else {
@@ -233,7 +233,7 @@ impl PositionManager for Contract {
                 amount_in = base_position_manager.swap(
                     path,
                     min_out,
-                    Account::from(contract_id())
+                    Account::from(ContractId::this())
                 );
             }
 

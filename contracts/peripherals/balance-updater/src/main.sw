@@ -18,7 +18,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     asset::{
@@ -105,7 +105,7 @@ fn _unwrap(
     // transfer wrapped asset to self
     asset_to_unwrap.transfer_on_behalf_of(
         get_sender(),
-        Account::from(contract_id()),
+        Account::from(ContractId::this()),
         amount
     );
 

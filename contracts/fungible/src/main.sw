@@ -80,7 +80,7 @@ impl FungibleAsset for Contract {
     */
     #[storage(read, write)]
     fn mint(recipient: Account, amount: u64) {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
 
         let supply = storage.total_supply.get(asset_id);
 
@@ -96,7 +96,7 @@ impl FungibleAsset for Contract {
     #[payable]
     #[storage(read, write)]
     fn burn(amount: u64) {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
 
         require(
             msg_asset_id() == asset_id,
@@ -171,12 +171,12 @@ impl FungibleAsset for Contract {
        /_/_/    |____/ \__,_|_|\__,_|_| |_|\___\___|
     */
     fn this_balance() -> u64 {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
-        balance_of(contract_id(), asset_id)
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        balance_of(ContractId::this(), asset_id)
     }
 
     fn get_balance(target: ContractId) -> u64 {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
         balance_of(target, asset_id)
     }
 
@@ -189,7 +189,7 @@ impl FungibleAsset for Contract {
     */
     #[payable]
     fn transfer(to: Account, amount: u64) {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
 
         // require(
         //     asset_id == msg_asset_id(),
@@ -206,7 +206,7 @@ impl FungibleAsset for Contract {
 
     #[payable]
     fn transfer_to_address(to: Address, amount: u64) {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
 
         require(
             asset_id == msg_asset_id(),
@@ -223,7 +223,7 @@ impl FungibleAsset for Contract {
 
     #[payable]
     fn transfer_to_contract(to: ContractId, amount: u64) {
-        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
 
         require(
             asset_id == msg_asset_id(),
@@ -246,6 +246,6 @@ impl FungibleAsset for Contract {
        /_/_/    |_|  |_|_|___/\___|
     */
     fn get_asset_id() -> AssetId {
-        AssetId::new(contract_id(), SUB_ID)
+        AssetId::new(ContractId::this(), SUB_ID)
     }
 }

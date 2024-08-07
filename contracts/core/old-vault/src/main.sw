@@ -21,7 +21,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     storage::storage_vec::*,
@@ -949,7 +949,7 @@ impl OldVault for Contract {
             asset_id: storage.usdg.read().into(),
             coins: _amount
         }(
-            Account::from(contract_id()),
+            Account::from(ContractId::this()),
             _amount
         );
 
@@ -1393,7 +1393,7 @@ fn _validate_manager() {
 #[storage(read, write)]
 fn _transfer_in(asset_id: AssetId) -> u64 {
     let prev_balance = storage.asset_balances.get(asset_id).try_read().unwrap_or(0);
-    let next_balance = balance_of(contract_id(), asset_id);
+    let next_balance = balance_of(ContractId::this(), asset_id);
     storage.asset_balances.insert(asset_id, next_balance);
 
     return next_balance - prev_balance;
@@ -1407,7 +1407,7 @@ fn _transfer_out(asset_id: AssetId, amount: u64, receiver: Account) {
         receiver,
         amount
     );
-    storage.asset_balances.insert(asset_id, balance_of(contract_id(), asset_id));
+    storage.asset_balances.insert(asset_id, balance_of(ContractId::this(), asset_id));
 }
 
 #[storage(read, write)]
@@ -1451,7 +1451,7 @@ fn _increase_pool_amount(asset: AssetId, amount: u256) {
     let new_pool_amount = storage.pool_amounts.get(asset).try_read().unwrap_or(0) + amount;
     storage.pool_amounts.insert(asset, new_pool_amount);
 
-    let balance = balance_of(contract_id(), asset);
+    let balance = balance_of(ContractId::this(), asset);
 
     require(new_pool_amount <= balance.as_u256(), Error::VaultInvalidIncrease);
 
@@ -1816,7 +1816,7 @@ fn _get_redemption_collateral(asset: AssetId) -> u256 {
 
 #[storage(write)]
 fn _update_asset_balance(asset: AssetId) {
-    let next_balance = balance_of(contract_id(), asset);
+    let next_balance = balance_of(ContractId::this(), asset);
     storage.asset_balances.insert(asset, next_balance);
 }
 

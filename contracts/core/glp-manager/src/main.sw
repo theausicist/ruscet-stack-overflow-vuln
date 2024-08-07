@@ -20,7 +20,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     asset::{
@@ -356,7 +356,7 @@ fn _add_liquidity(
 
     let usdg_amount = abi(Vault, storage.vault.read().into()).buy_usdg(
         asset,
-        Account::from(contract_id())
+        Account::from(ContractId::this())
     );
     require(
         usdg_amount >= min_usdg.as_u256(),
@@ -416,11 +416,11 @@ fn _remove_liquidity(
     let glp_supply = glp.total_supply();
 
     let usdg_amount = (glp_amount.as_u256() * aum_in_usdg) / glp_supply.as_u256();
-    let usdg_balance = usdg.balance_of(Account::from(contract_id())).as_u256();
+    let usdg_balance = usdg.balance_of(Account::from(ContractId::this())).as_u256();
     if usdg_amount > usdg_balance {
         // @TODO: potential revert here
         usdg.mint(
-            Account::from(contract_id()), 
+            Account::from(ContractId::this()), 
             u64::try_from(usdg_amount - usdg_balance).unwrap()
         );
     }

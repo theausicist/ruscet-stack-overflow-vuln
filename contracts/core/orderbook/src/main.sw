@@ -20,7 +20,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     primitive_conversions::u64::*,
@@ -259,7 +259,7 @@ impl Orderbook for Contract {
         should_wrap: bool
     ) {
         require(
-            msg_asset_id() == BASE_ASSET_ID,
+            msg_asset_id() == AssetId::base(),
             Error::OrderBookInvalidAssetForwarded
         );
 
@@ -270,7 +270,7 @@ impl Orderbook for Contract {
 
         if (should_wrap) {
             require(
-                path.get(0).unwrap() == BASE_ASSET_ID,
+                path.get(0).unwrap() == AssetId::base(),
                 Error::OrderBookPath0ShouldBeETH
             );
             require(msg_amount() == execution_fee + amount_in, Error::OrderBookIncorrectValueTransferred);
@@ -280,7 +280,7 @@ impl Orderbook for Contract {
                 .plugin_transfer(
                     path.get(0).unwrap(),
                     get_address_or_revert(),
-                    Account::from(contract_id()),
+                    Account::from(ContractId::this()),
                     amount_in
                 );
         }
@@ -314,7 +314,7 @@ impl Orderbook for Contract {
             purchase_asset_amount = _swap(
                 path,
                 min_out,
-                Account::from(contract_id())
+                Account::from(ContractId::this())
             );
         } else {
             purchase_asset_amount = amount_in.as_u256();
@@ -456,7 +456,7 @@ impl Orderbook for Contract {
             let amount_out = _swap(
                 path,
                 0,
-                Account::from(contract_id())
+                Account::from(ContractId::this())
             );
             transfer_assets(
                 order.collateral_asset,
@@ -506,7 +506,7 @@ impl Orderbook for Contract {
         trigger_above_threshold: bool,
     ) {
         require(
-            msg_asset_id() == BASE_ASSET_ID,
+            msg_asset_id() == AssetId::base(),
             Error::OrderBookInvalidAssetForwarded
         );
 
@@ -561,7 +561,7 @@ impl Orderbook for Contract {
             order.collateral_delta,
             order.size_delta,
             order.is_long,
-            Account::from(contract_id())
+            Account::from(ContractId::this())
         );
 
         // transfer released collateral to user
@@ -809,7 +809,7 @@ fn _swap(
             path.get(0).unwrap(),
             path.get(1).unwrap(),
             0,
-            Account::from(contract_id())
+            Account::from(ContractId::this())
         );
 
         transfer_assets(
@@ -864,7 +864,7 @@ fn _transfer_out_eth(
     amount_out: u64
 ) {
     transfer_assets(
-        BASE_ASSET_ID,
+        AssetId::base(),
         receiver,
         amount_out
     );

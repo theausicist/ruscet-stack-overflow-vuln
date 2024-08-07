@@ -4,11 +4,11 @@ members = [
 
     # "contracts/wrapped-asset",
     # "contracts/pricefeed",
-    # "contracts/core/vault-pricefeed",
+    "contracts/core/vault-pricefeed",
 
     # "contracts/core/vault-storage",
     # "contracts/core/vault-utils",
-    "contracts/core/vault",
+    # "contracts/core/vault",
 
     # "contracts/core/router",
     # "contracts/core/shorts-tracker",

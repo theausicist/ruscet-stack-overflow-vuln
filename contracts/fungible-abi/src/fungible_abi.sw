@@ -308,7 +308,7 @@ abi FungibleAsset {
     /// # Additional Information
     ///
     /// This method is a convenience method only used to query the balance of the contract's native assets,
-    /// owned by the current contract (`contract_id()`)
+    /// owned by the current contract (`ContractId::this()`)
     ///
     /// This method is not used to query the balance of an EOA on Fuel because EOAs follow the UTXO model, 
     /// while contracts follow the account model (i.e. EOAs don't "have" balances)
@@ -328,7 +328,7 @@ abi FungibleAsset {
     ///
     /// fn foo() {
     ///     mint(ZERO_B256, 50);
-    ///     assert(this_balance(sha256((ZERO_B256, contract_id()))) == 50);
+    ///     assert(this_balance(sha256((ZERO_B256, ContractId::this()))) == 50);
     /// }
     /// ```
     fn this_balance() -> u64;
@@ -359,7 +359,7 @@ abi FungibleAsset {
     ///
     /// fn foo() {
     ///     mint(ZERO_B256, 50);
-    ///     assert(balance_of(contract_id(), sha256((ZERO_B256, contract_id()))) == 50);
+    ///     assert(balance_of(ContractId::this(), sha256((ZERO_B256, ContractId::this()))) == 50);
     /// }
     /// ```
     fn get_balance(target: ContractId) -> u64;
@@ -399,13 +399,13 @@ abi FungibleAsset {
     /// # Examples
     ///
     /// ```sway
-    /// use std::{constants::{BASE_ASSET_ID, ZERO_B256}, asset::transfer};
+    /// use std::{constants::{AssetId::base(), ZERO_B256}, asset::transfer};
     ///
     /// fn foo() {
     ///     let to_address = Account::Address(Address::from(ZERO_B256));
     ///     let to_contract_id = Account::ContractId(ContractId::from(ZERO_B256));
-    ///     transfer(to_address, BASE_ASSET_ID, 500);
-    ///     transfer(to_contract_id, BASE_ASSET_ID, 500);
+    ///     transfer(to_address, AssetId::base(), 500);
+    ///     transfer(to_contract_id, AssetId::base(), 500);
     /// }
     /// ```
     #[payable]

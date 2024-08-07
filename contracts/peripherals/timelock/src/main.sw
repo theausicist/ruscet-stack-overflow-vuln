@@ -19,7 +19,7 @@ use std::{
         contract_id,
         msg_asset_id,
     },
-    constants::BASE_ASSET_ID,
+    
     context::*,
     revert::require,
     asset::{
@@ -126,7 +126,7 @@ impl Timelock for Contract {
         _only_gov();
 
         require(
-            target != contract_id(),
+            target != ContractId::this(),
             Error::TimelockInvalidTarget
         );
         
@@ -448,7 +448,7 @@ impl Timelock for Contract {
         let usdg = abi(USDG, abi(GLPManager, glp_manager.into()).get_usdg().into());
         let balance = usdg.balance_of(Account::from(glp_manager)).as_u256();
 
-        usdg.add_vault(contract_id());
+        usdg.add_vault(ContractId::this());
 
         if usdg_amount > balance {
             // @TODO: potential revert here
@@ -461,7 +461,7 @@ impl Timelock for Contract {
             usdg.burn(Account::from(glp_manager), burn_amount);
         }
 
-        usdg.remove_vault(contract_id());
+        usdg.remove_vault(ContractId::this());
     }
 
     #[storage(read)]

@@ -16,17 +16,11 @@ use std::{
     auth::msg_sender,
     block::timestamp,
     call_frames::{
-        contract_id,
         msg_asset_id,
     },
     math::*,
     context::*,
     revert::require,
-    asset::{
-        force_transfer_to_contract,
-        mint_to_address,
-        transfer_to_address,
-    },
     primitive_conversions::u64::*
 };
 use std::hash::*;
