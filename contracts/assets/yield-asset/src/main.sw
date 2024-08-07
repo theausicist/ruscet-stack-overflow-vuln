@@ -67,11 +67,11 @@ impl YieldAsset for Contract {
             !storage.is_initialized.read(), 
             Error::YieldAssetAlreadyInitialized
         );
-        storage.is_initialized.write(true);
 
         storage.name.write_slice(name);
         storage.symbol.write_slice(symbol);
         
+        storage.is_initialized.write(true);
         storage.gov.write(get_sender());
         storage.admins.insert(get_sender(), true);
         _mint(get_sender(), initial_supply);
@@ -199,7 +199,7 @@ impl YieldAsset for Contract {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     fn get_id() -> AssetId {
-        AssetId::new(ContractId::this(), ZERO)
+        AssetId::new(contract_id(), ZERO)
     }
 
     #[storage(read)]
@@ -336,7 +336,7 @@ fn _burn(
     require(account != ZERO_ACCOUNT, Error::YieldAssetBurnFromZeroAccount);
 
     require(
-        msg_asset_id() == AssetId::new(ContractId::this(), ZERO),
+        msg_asset_id() == AssetId::new(contract_id(), ZERO),
         Error::YieldAssetInvalidBurnAssetForwarded
     );
     require(
@@ -408,11 +408,7 @@ fn _transfer(
         );
     }
 
-    transfer_assets(
-        msg_asset_id(),
-        recipient,
-        amount
-    );
+    transfer(account_to_identity(recipient), msg_asset_id(), amount);
 }
 
 #[storage(read, write)]

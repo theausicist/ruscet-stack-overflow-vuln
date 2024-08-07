@@ -21,6 +21,6 @@ pub enum Error {
 
     TimelockAssetNotYetWhitelisted: (),
     TimelockLengthMismatch: (),
-    TimelockInvalidRlpManager: (),
+    TimelockInvalidGlpManager: (),
 
 }

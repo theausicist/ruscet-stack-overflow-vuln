@@ -5,15 +5,21 @@ use std::hash::*;
 use helpers::{
     context::*,
     signed_64::*,
+    fixed_vec::FixedVecAssetIdSize5,
     utils::*
 };
+
 
 abi PositionManager {
     #[storage(read, write)]
     fn initialize(
-        base_position_manager: ContractId,
         vault: ContractId,
+        vault_storage: ContractId,
         router: ContractId,
+        shorts_tracker: ContractId,
+        deposit_fee: u64,
+        orderbook: ContractId,
+        base_position_manager: ContractId
     );
 
     /*
@@ -24,13 +30,13 @@ abi PositionManager {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(read, write)]
-    fn set_order_keeper(order_keeper: Account, is_active: bool);
+    fn set_order_keeper(order_keeper: Address, is_active: bool);
 
     #[storage(read, write)]
-    fn set_liquidator(liquidator: Account, is_active: bool);
+    fn set_liquidator(liquidator: Address, is_active: bool);
 
     #[storage(read, write)]
-    fn set_partner(partner: Account, is_active: bool);
+    fn set_partner(partner: Address, is_active: bool);
 
     #[storage(read, write)]
     fn set_in_legacy_mode(in_legacy_mode: bool);
@@ -40,13 +46,6 @@ abi PositionManager {
         should_validator_increase_order: bool
     );
 
-    /*
-          ____ __     ___               
-         / / / \ \   / (_) _____      __
-        / / /   \ \ / /| |/ _ \ \ /\ / /
-       / / /     \ V / | |  __/\ V  V / 
-      /_/_/       \_/  |_|\___| \_/\_/  
-    */
     #[storage(read)]
     fn get_base_position_manager() -> ContractId;
 
@@ -58,7 +57,7 @@ abi PositionManager {
       /_/_/    |_|    \__,_|_.__/|_|_|\___|
     */
     #[payable]
-    #[storage(read)]
+    #[storage(read, write)]
     fn increase_position(
         path: Vec<AssetId>,
         index_asset: AssetId,

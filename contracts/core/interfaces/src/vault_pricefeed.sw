@@ -8,7 +8,7 @@ use helpers::{
 
 abi VaultPricefeed {
     #[storage(read, write)]
-    fn initialize(gov: Account);
+    fn initialize(gov: Address);
 
     /*
           ____     _       _           _       
@@ -67,12 +67,6 @@ abi VaultPricefeed {
       /_/_/       \_/  |_|\___| \_/\_/  
     */
     #[storage(read)]
-    fn get_adjustment_basis_points(asset: AssetId) -> u64;
-
-    #[storage(read)]
-    fn is_adjustment_additive(asset: AssetId) -> bool;
-
-    #[storage(read)]
     fn get_price(
         asset: AssetId,
         maximize: bool,
@@ -102,19 +96,4 @@ abi VaultPricefeed {
         asset: AssetId,
         maximize: bool
     ) -> u256;
-
-    /*
-          ____  ____        _     _ _      
-         / / / |  _ \ _   _| |__ | (_) ___ 
-        / / /  | |_) | | | | '_ \| | |/ __|
-       / / /   |  __/| |_| | |_) | | | (__ 
-      /_/_/    |_|    \__,_|_.__/|_|_|\___|
-    */
-    // this is just a helper method to update the price of an asset directly from VaultPricefeed
-    // this will be removed in the future when Pyth prices are supported on-chain
-    #[storage(read)]
-    fn update_price(
-        asset: AssetId,
-        new_price: u256
-    );
 }

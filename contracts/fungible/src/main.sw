@@ -6,7 +6,7 @@ mod errors;
 use std::{
     asset::*,
     context::*,
-    call_frames::{msg_asset_id},
+    call_frames::{contract_id, msg_asset_id},
     context::{this_balance, balance_of},
     hash::{
         Hash,
@@ -33,31 +33,17 @@ use errors::*;
 const SUB_ID = ZERO_B256;
 
 storage {
-    initialized: bool = false,
-    name: StorageString = StorageString {},
-    symbol: StorageString = StorageString {},
-    decimals: u8 = 9,
-    /// The total number of coins minted.
-    total_supply: u64 = 0
+    /// The name associated with a particular asset.
+    name: StorageMap<AssetId, StorageString> = StorageMap {},
+    /// The symbol associated with a particular asset.
+    symbol: StorageMap<AssetId, StorageString> = StorageMap {},
+    /// The decimals associated with a particular asset.
+    decimals: StorageMap<AssetId, u8> = StorageMap {},
+    /// The total number of coins minted for a particular asset.
+    total_supply: StorageMap<AssetId, u64> = StorageMap {}
 }
 
 impl FungibleAsset for Contract {
-    #[storage(read, write)]
-    fn initialize(
-        name: String,
-        symbol: String,
-        decimals: u8
-    ) {
-        require(
-            !storage.initialized.read(),
-            Error::FungibleAlreadyInitialized
-        );
-        storage.initialized.write(true);
-        
-        storage.name.write_slice(name);
-        storage.symbol.write_slice(symbol);
-        storage.decimals.write(decimals);
-    }
     /*
            ____  ____  ____   ____ ____   ___  
           / / / / ___||  _ \ / ___|___ \ / _ \ 
@@ -66,23 +52,23 @@ impl FungibleAsset for Contract {
        /_/_/    |____/|_| \_\\____|_____|\___/                                         
     */
     #[storage(read)]
-    fn name() -> String {
-        storage.name.read_slice().unwrap()
+    fn total_supply(asset_id: AssetId) -> Option<u64> {
+        storage.total_supply.get(asset_id).try_read()
     }
 
     #[storage(read)]
-    fn symbol() -> String {
-        storage.symbol.read_slice().unwrap()
+    fn name(asset_id: AssetId) -> Option<String> {
+        storage.name.get(asset_id).read_slice()
     }
 
     #[storage(read)]
-    fn decimals() -> u8 {
-        storage.decimals.read()
+    fn symbol(asset_id: AssetId) -> Option<String> {
+        storage.symbol.get(asset_id).read_slice()
     }
 
     #[storage(read)]
-    fn total_supply() -> u64 {
-        storage.total_supply.read()
+    fn decimals(asset_id: AssetId) -> Option<u8> {
+        storage.decimals.get(asset_id).try_read()
     }
 
     /*
@@ -94,9 +80,13 @@ impl FungibleAsset for Contract {
     */
     #[storage(read, write)]
     fn mint(recipient: Account, amount: u64) {
-        let supply = storage.total_supply.read();
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
 
-        storage.total_supply.write(supply + amount);
+        let supply = storage.total_supply.get(asset_id);
+
+        storage
+            .total_supply
+            .insert(asset_id, supply.try_read().unwrap_or(0) + amount);
 
         // The `asset_id` constructed within the `mint_to` method is a sha256 hash of
         // the `contract_id` and the `SUB_ID` (the same as the `asset_id` constructed here).
@@ -106,7 +96,7 @@ impl FungibleAsset for Contract {
     #[payable]
     #[storage(read, write)]
     fn burn(amount: u64) {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
 
         require(
             msg_asset_id() == asset_id,
@@ -118,9 +108,59 @@ impl FungibleAsset for Contract {
         );
 
         // If we pass the check above, we can assume it is safe to unwrap.
-        storage.total_supply.write(storage.total_supply.read() - amount);
+        storage
+            .total_supply
+            .insert(asset_id, storage.total_supply.get(asset_id).read() - amount);
 
         burn(SUB_ID, amount);
+    }
+
+    /*
+           ____  ____       _   _                
+          / / / / ___|  ___| |_| |_ ___ _ __ ___ 
+         / / /  \___ \ / _ \ __| __/ _ \ '__/ __|
+        / / /    ___) |  __/ |_| ||  __/ |  \__ \
+       /_/_/    |____/ \___|\__|\__\___|_|  |___/
+    */
+    #[storage(write)]
+    fn set_name(asset_id: AssetId, name: String) {
+        require(
+            storage
+                .name
+                .get(asset_id)
+                .read_slice()
+                .is_none(),
+            Error::FungibleNameAlreadySet,
+        );
+        storage.name.insert(asset_id, StorageString {});
+        storage.name.get(asset_id).write_slice(name);
+    }
+
+    #[storage(write)]
+    fn set_symbol(asset_id: AssetId, symbol: String) {
+        require(
+            storage
+                .symbol
+                .get(asset_id)
+                .read_slice()
+                .is_none(),
+            Error::FungibleSymbolAlreadySet,
+        );
+        storage.symbol.insert(asset_id, StorageString {});
+        storage.symbol.get(asset_id).write_slice(symbol);
+    }
+
+    #[storage(write)]
+    fn set_decimals(asset_id: AssetId, decimals: u8) {
+        require(
+            storage
+                .decimals
+                .get(asset_id)
+                .try_read()
+                .is_none(),
+            Error::FungibleDecimalsAlreadySet,
+        );
+        storage.decimals.insert(asset_id, decimals);
     }
 
     /*
@@ -131,12 +171,12 @@ impl FungibleAsset for Contract {
        /_/_/    |____/ \__,_|_|\__,_|_| |_|\___\___|
     */
     fn this_balance() -> u64 {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
-        balance_of(ContractId::this(), asset_id)
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
+        balance_of(contract_id(), asset_id)
     }
 
     fn get_balance(target: ContractId) -> u64 {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
         balance_of(target, asset_id)
     }
 
@@ -149,7 +189,7 @@ impl FungibleAsset for Contract {
     */
     #[payable]
     fn transfer(to: Account, amount: u64) {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
 
         // require(
         //     asset_id == msg_asset_id(),
@@ -166,7 +206,7 @@ impl FungibleAsset for Contract {
 
     #[payable]
     fn transfer_to_address(to: Address, amount: u64) {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
 
         require(
             asset_id == msg_asset_id(),
@@ -178,12 +218,12 @@ impl FungibleAsset for Contract {
             Error::FungibleInsufficientAmountForwarded
         );
 
-        transfer(Identity::Address(to), asset_id, amount);
+        transfer_to_address(to, asset_id, amount);
     }
 
     #[payable]
     fn transfer_to_contract(to: ContractId, amount: u64) {
-        let asset_id = AssetId::new(ContractId::this(), SUB_ID);
+        let asset_id = AssetId::new(contract_id(), SUB_ID);
 
         require(
             asset_id == msg_asset_id(),
@@ -195,7 +235,7 @@ impl FungibleAsset for Contract {
             Error::FungibleInsufficientAmountForwarded
         );
 
-        transfer(Identity::ContractId(to), asset_id, amount);
+        force_transfer_to_contract(to, asset_id, amount);
     }
 
     /*
@@ -206,6 +246,6 @@ impl FungibleAsset for Contract {
        /_/_/    |_|  |_|_|___/\___|
     */
     fn get_asset_id() -> AssetId {
-        AssetId::new(ContractId::this(), SUB_ID)
+        AssetId::new(contract_id(), SUB_ID)
     }
 }

@@ -6,7 +6,7 @@ pub enum Error {
     OrderBookForbidden: (),
     OrderBookVaultZero: (),
     OrderBookRouterZero: (),
-    OrderBookRusdZero: (),
+    OrderBookUsdgZero: (),
 
     OrderBookInvalidAssetForwarded: (),
     OrderBookIncorrectAssetAmountForwarded: (),

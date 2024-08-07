@@ -3,13 +3,10 @@ library;
 
 pub enum Error {
     BPMAlreadyInitialized: (),
-    BPMChildAlreadyRegistered: (),
 
     BPMVaultStorageZero: (),
     BPMRouterZero: (),
     BPMShortsTrackerZero: (),
-
-    BPMInvalidPathLen: (),
     
     BPMForbidden: (),
     BPMOnlyChildContract: (),
@@ -24,6 +21,4 @@ pub enum Error {
 
     BPMInvalidAssetForwarded: (),
     BPMInvalidAssetAmountForwardedToCoverFeeAmount: (),
-    
-    BPMInvalidAmountOut: ()
 }

@@ -2,46 +2,69 @@
 library;
 
 pub enum Error {
-    VaultForbiddenNotGov: (),
     VaultAlreadyInitialized: (),
+    VaultInvalidUSDGAsset: (),
+    VaultForbiddenNotGov: (),
     VaultForbiddenNotManager: (),
     VaultInvalidMsgCaller: (),
+    VaultZeroAsset: (),
 
-    VaultReceiverCannotBeZero: (),
+    VaultMaxUsdgExceeded: (),
+    VaultMaxShortsExceeded: (),
+    VaultMaxLeverageExceeded: (),
+    VaultPoolAmountExceeded: (),
+    VaultPositionSizeExceeded: (),
+    VaultPositionCollateralExceeded: (),
+
+    VaultReserveExceedsPool: (),
+    VaultInvalidIncrease: (),
+    VaultInsufficientReserve: (),
+
+    VaultInsufficientCollateralForFees: (),
+
+    VaultInvalidPricePrecision: (),
+    VaultInvalidMaxLiquidationFeeUsd: (),
+
+    VaultPriceQueriedIsZero: (),
+
+    VaultPoolAmountLtBuffer: (),
+    VaultCollateralShouldBeWithdrawn: (),
+    VaultSizeMustBeMoreThanCollateral: (),
+    
+    VaultInvalidTaxBasisPoints: (),
+    VaultInvalidStableTaxBasisPoints: (),
+    VaultInvalidMintBurnFeeBasisPoints: (),
+    VaultInvalidSwapFeeBasisPoints: (),
+    VaultInvalidStableSwapFeeBasisPoints: (),
+    VaultInvalidMarginFeeBasisPoints: (),
+    VaultInvalidLiquidationFeeUsd: (),
+    VaultPositionCannotBeLiquidated: (),
+
+    VaultInvalidFundingInterval: (),
+    VaultInvalidFundingRateFactor: (),
+    VaultInvalidStableFundingRateFactor: (),
 
     VaultAssetNotWhitelisted: (),
     VaultInvalidAssetAmount: (),
-    VaultInvalidRusdAmount: (),
+    VaultInvalidUsdgAmount: (),
     VaultInvalidRedemptionAmount: (),
-    VaultZeroAmountOfAssetForwarded: (),
 
+    VaultInvalidPosition: (),
+    VaultInvalidAmountIn: (),
     VaultInvalidAmountOut: (),
+    VaultInvalidPositionSize: (),
+    VaultInvalidAveragePrice: (),
+    VaultInvalidLiquidator: (),
 
-    VaultInvalidMintAmountGtU64Max: (),
-    VaultInvalidRUSDBurnAmountGtU64Max: (),
+    VaultEmptyPosition: (),
 
     VaultSwapsNotEnabled: (),
-
-    VaultPoolAmountLtBuffer: (),
-
-    VaultInvalidAmountIn: (),
+    VaultLeverageNotEnabled: (),
 
     VaultAssetInNotWhitelisted: (),
     VaultAssetOutNotWhitelisted: (),
     VaultAssetsAreEqual: (),
-
-    VaultInsufficientCollateralForFees: (),
-
-    VaultAccountCannotBeZero: (),
-
-    VaultCollateralShouldBeWithdrawn: (),
-    VaultSizeMustBeMoreThanCollateral: (),
     
-    VaultInvalidPosition: (),
-    VaultInvalidPositionSize: (),
-
-    VaultLeverageNotEnabled: (),
-
     VaultLongCollateralIndexAssetsMismatch: (),
     VaultLongCollateralAssetNotWhitelisted: (),
     VaultLongCollateralAssetMustNotBeStableAsset: (),
@@ -51,12 +74,10 @@ pub enum Error {
     VaultShortIndexAssetMustNotBeStableAsset: (),
     VaultShortIndexAssetNotShortable: (),
 
-    VaultPositionCannotBeLiquidated: (),
+    VaultLossesExceedCollateral: (),
+    VaultFeesExceedCollateral: (),
+    VaultLiquidationFeesExceedCollateral: (),
 
-    VaultInvalidLiquidator: (),
-
-    VaultEmptyPosition: (),
-
-    VaultPositionSizeExceeded: (),
-    VaultPositionCollateralExceeded: (),
+    VaultInvalidMintAmountGtU64Max: (),
+    VaultInvalidUSDGBurnAmountGtU64Max: ()
 }

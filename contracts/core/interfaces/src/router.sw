@@ -7,8 +7,8 @@ abi Router {
    #[storage(read, write)]
     fn initialize(
         vault: ContractId,
-        rusd: ContractId,
-        gov: Account
+        usdg: ContractId,
+        gov: Address
     );
 
     /*
@@ -19,26 +19,13 @@ abi Router {
       /_/_/    /_/   \_\__,_|_| |_| |_|_|_| |_|                         
     */
     #[storage(write)]
-    fn set_gov(gov: Account);
+    fn set_gov(gov: Address);
 
     #[storage(write)]
-    fn set_plugin(plugin: ContractId, is_active: bool);
+    fn update_plugin(plugin: ContractId, is_active: bool);
 
     #[storage(write)]
-    fn set_approved_plugins(plugin: ContractId, is_approved: bool);
-
-    /*
-          ____ __     ___               
-         / / / \ \   / (_) _____      __
-        / / /   \ \ / /| |/ _ \ \ /\ / /
-       / / /     \ V / | |  __/\ V  V / 
-      /_/_/       \_/  |_|\___| \_/\_/  
-    */
-    #[storage(read)]
-    fn is_plugin(plugin: ContractId) -> bool;
-
-    #[storage(read)]
-    fn is_approved_plugin(account: Account, plugin: ContractId) -> bool;
+    fn update_approved_plugins(plugin: ContractId, is_approved: bool);
 
     /*
           ____  ____        _     _ _      
@@ -51,14 +38,14 @@ abi Router {
     #[storage(read)]
     fn plugin_transfer(
         asset: AssetId,
-        account: Account,
+        account: Address,
         receiver: Account,
         amount: u64 
     );
 
     #[storage(read)]
     fn plugin_increase_position(
-        account: Account,
+        account: Address,
         collateral_asset: AssetId,
         index_asset: AssetId,
         size_delta: u256,
@@ -67,7 +54,7 @@ abi Router {
 
     #[storage(read)]
     fn plugin_decrease_position(
-        account: Account,
+        account: Address,
         collateral_asset: AssetId,
         index_asset: AssetId,
         collateral_delta: u256,

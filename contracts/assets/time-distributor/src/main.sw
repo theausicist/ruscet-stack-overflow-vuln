@@ -21,6 +21,7 @@ use std::{
         storage_string::*,
         storage_vec::*,
     },
+    call_frames::*,
     string::String
 };
 use std::hash::*;
@@ -132,11 +133,11 @@ impl TimeDistributor for Contract {
             storage.reward_assets.insert(receiver, reward_asset);
             // _update_last_distribution_time(receiver);
 
-            // log(DistributionChange {
-            //     receiver,
-            //     amount,
-            //     reward_asset
-            // });
+            log(DistributionChange {
+                receiver,
+                amount,
+                reward_asset
+            });
 
             i += 1;
         }
@@ -243,7 +244,7 @@ fn _get_distribution_amount(account: Account) -> u64 {
     let amount = assets_per_interval * intervals;
 
     let balance = balance_of(
-        ContractId::this(),
+        contract_id(),
         // we want this to intentionally revert if there are no reward assets set for the account
         storage.reward_assets.get(account).read(),
     );

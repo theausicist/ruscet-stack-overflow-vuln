@@ -9,39 +9,39 @@ use helpers::{
 };
 
 pub struct IncreaseOrder {
-    pub account: Account,
-    pub purchase_asset: AssetId,
-    pub purchase_asset_amount: u256,
-    pub collateral_asset: AssetId,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    purchase_asset: AssetId,
+    purchase_asset_amount: u256,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct DecreaseOrder {
-    pub account: Account,
-    pub collateral_asset: AssetId,
-    pub collateral_delta: u256,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    collateral_asset: AssetId,
+    collateral_delta: u256,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct SwapOrder {
-    pub account: Account,
-    pub path: FixedVecAssetIdSize5,
-    pub amount_in: u64,
-    pub min_out: u64,
-    pub trigger_ratio: u64,
-    pub trigger_above_threshold: bool,
-    pub should_unwrap: bool,
-    pub execution_fee: u64,
+    account: Address,
+    path: FixedVecAssetIdSize5,
+    amount_in: u64,
+    min_out: u64,
+    trigger_ratio: u64,
+    trigger_above_threshold: bool,
+    should_unwrap: bool,
+    execution_fee: u64,
 }
 
 abi Orderbook {
@@ -49,7 +49,7 @@ abi Orderbook {
     fn initialize(
         router: ContractId,
         vault: ContractId,
-        rusd: AssetId,
+        usdg: AssetId,
         min_execution_fee: u64,
         min_purchase_asset_amount_usd: u64
     );
@@ -79,7 +79,7 @@ abi Orderbook {
     */
     #[storage(read)]
     fn get_swap_order(
-        account: Account,
+        account: Address,
         order_index: u64
     ) -> (
         AssetId, AssetId, AssetId,
@@ -99,7 +99,7 @@ abi Orderbook {
 
     #[storage(read)]
     fn get_increase_order(
-        account: Account,
+        account: Address,
         order_index: u64
     ) -> (
         AssetId, u256, AssetId, AssetId,
@@ -109,7 +109,7 @@ abi Orderbook {
 
     #[storage(read)]
     fn get_decrease_order(
-        account: Account,
+        account: Address,
         order_index: u64
     ) -> (
         AssetId, u256, AssetId,
@@ -153,9 +153,9 @@ abi Orderbook {
 
     #[storage(read, write)]
     fn execute_increase_order(
-        account: Account,
+        address: Address,
         order_index: u64,
-        fee_receiver: Account
+        fee_receiver: Address
     );
 
     #[payable]
@@ -172,9 +172,9 @@ abi Orderbook {
 
     #[storage(read, write)]
     fn execute_decrease_order(
-        account: Account,
+        account: Address,
         order_index: u64,
-        fee_receiver: Account
+        fee_receiver: Address
     );
 
     #[storage(read, write)]
@@ -193,7 +193,7 @@ abi Orderbook {
 impl IncreaseOrder {
     pub fn default() -> Self {
         Self {
-            account: ZERO_ACCOUNT,
+            account: ZERO_ADDRESS,
             purchase_asset: ZERO_ASSET,
             purchase_asset_amount: 0,
             collateral_asset: ZERO_ASSET,
@@ -210,7 +210,7 @@ impl IncreaseOrder {
 impl DecreaseOrder {
     pub fn default() -> Self {
         Self {
-            account: ZERO_ACCOUNT,
+            account: ZERO_ADDRESS,
             collateral_asset: ZERO_ASSET,
             collateral_delta: 0,
             index_asset: ZERO_ASSET,
@@ -226,7 +226,7 @@ impl DecreaseOrder {
 impl SwapOrder {
     pub fn default() -> Self {
         Self {
-            account: ZERO_ACCOUNT,
+            account: ZERO_ADDRESS,
             path: FixedVecAssetIdSize5::default(),
             amount_in: 0,
             min_out: 0,

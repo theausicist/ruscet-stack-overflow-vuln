@@ -18,7 +18,7 @@ abi BalanceUpdater {
     fn update_balance(
         vault_: ContractId,
         asset: AssetId,
-        rusd: WrappedAsset,
-        rusd_amount: u64
+        usdg: WrappedAsset,
+        usdg_amount: u64
     );
 } 

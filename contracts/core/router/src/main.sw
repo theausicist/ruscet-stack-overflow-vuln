@@ -11,10 +11,20 @@ contract;
 
 mod errors;
 use std::{
+    auth::msg_sender,
     block::timestamp,
-    call_frames::msg_asset_id,
+    call_frames::{
+        contract_id,
+        msg_asset_id,
+    },
+    constants::BASE_ASSET_ID,
     context::*,
     revert::require,
+    asset::{
+        force_transfer_to_contract,
+        mint_to_address,
+        transfer_to_address,
+    },
 };
 use std::hash::*;
 use core_interfaces::{
@@ -25,64 +35,47 @@ use helpers::{context::*, utils::*, transfer::*};
 use errors::*;
 
 storage {
-    gov: Account = ZERO_ACCOUNT,
+    gov: Address = ZERO_ADDRESS,
     is_initialized: bool = false,
     
-    rusd: ContractId = ZERO_CONTRACT,
+    usdg: ContractId = ZERO_CONTRACT,
     vault: ContractId = ZERO_CONTRACT,
 
     plugins: StorageMap<ContractId, bool> = StorageMap::<ContractId, bool> {},
-    approved_plugins: StorageMap<(Account, ContractId), bool> 
-        = StorageMap::<(Account, ContractId), bool> {},
+    approved_plugins: StorageMap<Address, StorageMap<ContractId, bool>> 
+        = StorageMap::<Address, StorageMap<ContractId, bool>> {},
 }
 
 impl Router for Contract {
     #[storage(read, write)]
     fn initialize(
         vault: ContractId,
-        rusd: ContractId,
-        gov: Account,
+        usdg: ContractId,
+        gov: Address,
     ) {
         require(!storage.is_initialized.read(), Error::RouterAlreadyInitialized);
         storage.is_initialized.write(true);
-
         storage.gov.write(gov);
+
         storage.vault.write(vault);
-        storage.rusd.write(rusd);
+        storage.usdg.write(usdg);
     }
 
     #[storage(write)]
-    fn set_gov(gov: Account) {
+    fn set_gov(gov: Address) {
         _only_gov();
         storage.gov.write(gov);
     }
 
     #[storage(write)]
-    fn set_plugin(plugin: ContractId, is_active: bool) {
+    fn update_plugin(plugin: ContractId, is_active: bool) {
         _only_gov();
         storage.plugins.insert(plugin, is_active);
     }
 
     #[storage(write)]
-    fn set_approved_plugins(plugin: ContractId, is_approved: bool) {
-        storage.approved_plugins.insert((get_sender(), plugin), is_approved);
-    }
-
-    /*
-          ____ __     ___               
-         / / / \ \   / (_) _____      __
-        / / /   \ \ / /| |/ _ \ \ /\ / /
-       / / /     \ V / | |  __/\ V  V / 
-      /_/_/       \_/  |_|\___| \_/\_/  
-    */
-    #[storage(read)]
-    fn is_plugin(plugin: ContractId) -> bool {
-        storage.plugins.get(plugin).try_read().unwrap_or(false)
-    }
-
-    #[storage(read)]
-    fn is_approved_plugin(account: Account, plugin: ContractId) -> bool {
-        storage.approved_plugins.get((account, plugin)).try_read().unwrap_or(false)
+    fn update_approved_plugins(plugin: ContractId, is_approved: bool) {
+        storage.approved_plugins.get(get_address_or_revert()).insert(plugin, is_approved);
     }
 
     /*
@@ -96,7 +89,7 @@ impl Router for Contract {
     #[storage(read)]
     fn plugin_transfer(
         asset: AssetId,
-        account: Account,
+        account: Address,
         receiver: Account,
         amount: u64 
     ) {
@@ -122,7 +115,7 @@ impl Router for Contract {
 
     #[storage(read)]
     fn plugin_increase_position(
-        account: Account,
+        account: Address,
         collateral_asset: AssetId,
         index_asset: AssetId,
         size_delta: u256,
@@ -141,7 +134,7 @@ impl Router for Contract {
 
     #[storage(read)]
     fn plugin_decrease_position(
-        account: Account,
+        account: Address,
         collateral_asset: AssetId,
         index_asset: AssetId,
         collateral_delta: u256,
@@ -166,7 +159,7 @@ impl Router for Contract {
     #[storage(read)]
     fn direct_pool_deposit(asset: AssetId) {
         require(
-            msg_asset_id() == asset,
+            msg_asset_id() == AssetId::from(asset.into()),
             Error::RouterInvalidAssetForwarded
         );
         require(
@@ -192,11 +185,11 @@ impl Router for Contract {
 
 #[storage(read)]
 fn _only_gov() {
-    require(get_sender() == storage.gov.read(), Error::RouterForbidden);
+    require(get_address_or_revert() == storage.gov.read(), Error::RouterForbidden);
 }
 
 #[storage(read)]
-fn _validate_plugin(account: Account) {
+fn _validate_plugin(account: Address) {
     let sender_contract = get_contract_or_revert();
     require(
         storage.plugins.get(sender_contract).try_read().is_some(),
@@ -204,7 +197,7 @@ fn _validate_plugin(account: Account) {
     );
 
     require(
-        storage.approved_plugins.get((account, sender_contract)).try_read().is_some(),
+        storage.approved_plugins.get(account).get(sender_contract).try_read().is_some(),
         Error::RouterPluginNotApproved
     );
 }

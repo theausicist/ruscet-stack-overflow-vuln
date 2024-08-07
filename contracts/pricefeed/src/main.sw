@@ -23,8 +23,6 @@ use interfaces::pricefeed::Pricefeed;
 use errors::*;
 
 storage {
-    is_initialized: bool = false,
-
     answer: u256 = 0,
     decimals: u8 = 8,
     round_id: u64 = 0,
@@ -39,13 +37,8 @@ impl Pricefeed for Contract {
         gov: Account,
         description: String
     ) {
-        require(
-            !storage.is_initialized.read(),
-            Error::PriceFeedAlreadyInitialized
-        );
         require(gov.non_zero(), Error::PricefeedGovZero);
 
-        storage.is_initialized.write(true);
         storage.gov.write(gov);
         storage.description.write_slice(description);
     }
@@ -76,7 +69,7 @@ impl Pricefeed for Contract {
 
     #[storage(read, write)]
     fn set_latest_answer(new_answer: u256) {
-        // require(get_sender() == storage.gov.read(), Error::PricefeedForbidden);
+        require(get_sender() == storage.gov.read(), Error::PricefeedForbidden);
 
         let round_id = storage.round_id.read();
 

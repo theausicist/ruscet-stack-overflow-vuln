@@ -19,6 +19,7 @@ use std::{
         storage_string::*,
         storage_vec::*,
     },
+    call_frames::*,
     primitive_conversions::u64::*,
     string::String
 };
@@ -59,10 +60,10 @@ impl YieldTracker for Contract {
             !storage.is_initialized.read(), 
             Error::YieldTrackerAlreadyInitialized
         );
-        storage.is_initialized.write(true);
 
         storage.gov.write(get_sender());
         storage.yield_asset.write(yield_asset);
+        storage.is_initialized.write(true);
     }
 
     /*
@@ -96,7 +97,7 @@ impl YieldTracker for Contract {
         abi(
             TimeDistributor, 
             storage.time_distributor.read().into()
-        ).get_assets_per_interval(Account::from(ContractId::this()))  
+        ).get_assets_per_interval(Account::from(contract_id()))  
     }
 
     #[storage(read)]
@@ -109,7 +110,7 @@ impl YieldTracker for Contract {
             return storage.claimable_reward.get(account).try_read().unwrap_or(0);
         }
 
-        let pending_rewards = time_distributor.get_distribution_amount(Account::from(ContractId::this())).as_u256() * PRECISION;
+        let pending_rewards = time_distributor.get_distribution_amount(Account::from(contract_id())).as_u256() * PRECISION;
         let total_staked = yield_asset.total_staked().as_u256();
         let next_cumulative_reward_per_asset = 
             storage.cumulative_reward_per_asset.read() + (pending_rewards / total_staked);
@@ -152,7 +153,7 @@ impl YieldTracker for Contract {
         let reward_asset = abi(
             TimeDistributor, 
             storage.time_distributor.read().into()
-        ).get_reward_asset(Account::from(ContractId::this()));
+        ).get_reward_asset(Account::from(contract_id()));
         
         transfer_assets(
             reward_asset,

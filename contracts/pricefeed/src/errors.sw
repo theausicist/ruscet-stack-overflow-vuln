@@ -2,7 +2,6 @@
 library;
 
 pub enum Error {
-    PriceFeedAlreadyInitialized: (),
     PricefeedGovZero: (),
     PricefeedForbidden: (),
     PricefeedRoundNotComplete: (),

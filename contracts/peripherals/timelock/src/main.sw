@@ -13,26 +13,35 @@ mod constants;
 mod errors;
 
 use std::{
+    auth::msg_sender,
     block::timestamp,
-    call_frames::msg_asset_id,
+    call_frames::{
+        contract_id,
+        msg_asset_id,
+    },
+    constants::BASE_ASSET_ID,
     context::*,
     revert::require,
+    asset::{
+        force_transfer_to_contract,
+        mint_to_address,
+        transfer_to_address,
+    },
     primitive_conversions::u64::*
 };
 use std::hash::*;
 use peripheral_interfaces::timelock::Timelock;
 use referrals_interfaces::referral_storage::ReferralStorage;
 use asset_interfaces::{
-    rlp::RLP,
-    rusd::RUSD
+    glp::GLP,
+    usdg::USDG
 };
 use core_interfaces::{
     vault_pricefeed::VaultPricefeed,
     base_position_manager::BasePositionManager,
-    rlp_manager::RLPManager,
+    glp_manager::GLPManager,
     vault::Vault,
-    vault_storage::VaultStorage,
-    vault_utils::VaultUtils,
+    vault_storage::VaultStorage
 };
 use helpers::{
     context::*, 
@@ -51,8 +60,8 @@ storage {
     buffer: u64 = 0,
     asset_manager: Account = ZERO_ACCOUNT,
     mint_receiver: Account = ZERO_ACCOUNT,
-    rlp_manager: ContractId = ZERO_CONTRACT,
-    prev_rlp_manager: ContractId = ZERO_CONTRACT,
+    glp_manager: ContractId = ZERO_CONTRACT,
+    prev_glp_manager: ContractId = ZERO_CONTRACT,
     reward_router: ContractId = ZERO_CONTRACT,
     max_asset_supply: u64 = 0,
     margin_fee_bps: u64 = 0,
@@ -60,7 +69,7 @@ storage {
 
     should_toggle_is_leverage_enabled: bool = false,
 
-    // pending_actions: StorageMap<b256, u64> = StorageMap::<b256, u64> {},
+    pending_actions: StorageMap<b256, u64> = StorageMap::<b256, u64> {},
 
     is_handler: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
     is_keeper: StorageMap<Account, bool> = StorageMap::<Account, bool> {},
@@ -73,8 +82,8 @@ impl Timelock for Contract {
         buffer: u64,
         asset_manager: Account,
         mint_receiver: Account,
-        rlp_manager: ContractId,
-        prev_rlp_manager: ContractId,
+        glp_manager: ContractId,
+        prev_glp_manager: ContractId,
         reward_router: ContractId,
         max_asset_supply: u64,
         margin_fee_bps: u64,
@@ -89,8 +98,8 @@ impl Timelock for Contract {
         storage.buffer.write(buffer);
         storage.asset_manager.write(asset_manager);
         storage.mint_receiver.write(mint_receiver);
-        storage.rlp_manager.write(rlp_manager);
-        storage.prev_rlp_manager.write(prev_rlp_manager);
+        storage.glp_manager.write(glp_manager);
+        storage.prev_glp_manager.write(prev_glp_manager);
         storage.reward_router.write(reward_router);
         storage.max_asset_supply.write(max_asset_supply);
 
@@ -117,7 +126,7 @@ impl Timelock for Contract {
         _only_gov();
 
         require(
-            target != ContractId::this(),
+            target != contract_id(),
             Error::TimelockInvalidTarget
         );
         
@@ -139,20 +148,20 @@ impl Timelock for Contract {
     }
 
     #[storage(read)]
-    fn init_rlp_manager() {
+    fn init_glp_manager() {
         _only_gov();
 
-        let _rlp_manager = storage.rlp_manager.read();
-        let rlp_manager = abi(RLPManager, _rlp_manager.into());
+        let _glp_manager = storage.glp_manager.read();
+        let glp_manager = abi(GLPManager, _glp_manager.into());
     
-        let rlp = abi(RLP, rlp_manager.get_rlp().into());
-        rlp.set_minter(Account::from(_rlp_manager), true);
+        let glp = abi(GLP, glp_manager.get_glp().into());
+        glp.set_minter(Account::from(_glp_manager), true);
 
-        let rusd = abi(RUSD, rlp_manager.get_rusd().into());
-        rusd.add_vault(_rlp_manager);
+        let usdg = abi(USDG, glp_manager.get_usdg().into());
+        usdg.add_vault(_glp_manager);
 
-        let vault = abi(Vault, rlp_manager.get_vault().into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_manager(Account::from(_rlp_manager), true);
+        let vault = abi(Vault, glp_manager.get_vault().into());
+        abi(VaultStorage, vault.get_vault_storage().into()).set_manager(Account::from(_glp_manager), true);
     }
 
     // @TODO: uncomment when `RewardRouter` is implemented
@@ -164,9 +173,9 @@ impl Timelock for Contract {
         let _reward_router = storage.reward_router.read();
         let reward_router = abi(RewardRouter, _reward_router.into());
 
-        abi(RLPManager, reward_router.get_fee_rlp_tracker().into()).set_handler(_reward_router, true);
-        abi(RLPManager, reward_router.get_staked_rlp_tracker().into()).set_handler(_reward_router, true);
-        abi(RLPManager, storage.rlp_manager.read().into()).set_handler(_reward_router, true);
+        abi(GLPManager, reward_router.get_fee_glp_tracker().into()).set_handler(_reward_router, true);
+        abi(GLPManager, reward_router.get_staked_glp_tracker().into()).set_handler(_reward_router, true);
+        abi(GLPManager, storage.glp_manager.read().into()).set_handler(_reward_router, true);
     }
     */
 
@@ -189,7 +198,7 @@ impl Timelock for Contract {
 
     #[storage(read)]
     fn set_max_leverage(
-        vault_: ContractId,
+        vault_storage: ContractId,
         max_leverage: u64
     ) {
         _only_gov();
@@ -199,13 +208,12 @@ impl Timelock for Contract {
             Error::TimelockInvalidMaxLeverage
         );
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_max_leverage(max_leverage);
+        abi(VaultStorage, vault_storage.into()).set_max_leverage(max_leverage);
     }
 
     #[storage(read)]
     fn set_funding_rate(
-        vault_: ContractId,
+        vault_storage: ContractId,
         funding_interval: u64,
         funding_rate_factor: u64,
         stable_funding_rate_factor: u64
@@ -222,8 +230,7 @@ impl Timelock for Contract {
             Error::TimelockInvalidStableFundingRateFactor
         );
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_funding_rate(
+        abi(VaultStorage, vault_storage.into()).set_funding_rate(
             funding_interval,
             funding_rate_factor,
             stable_funding_rate_factor
@@ -251,7 +258,7 @@ impl Timelock for Contract {
 
     #[storage(read)]
     fn set_swap_fees(
-        vault_: ContractId,
+        vault_storage_: ContractId,
         tax_basis_points: u64,
         stable_tax_basis_points: u64,
         mint_burn_basis_points: u64,
@@ -260,8 +267,7 @@ impl Timelock for Contract {
     ) {
         _only_keeper_and_above();
 
-        let vault = abi(Vault, vault_.into());
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let vault_storage = abi(VaultStorage, vault_storage_.into());
 
         vault_storage.set_fees(
             tax_basis_points,
@@ -281,7 +287,7 @@ impl Timelock for Contract {
     // and disableLeverage would reset the Vault.marginFeeBasisPoints to this.maxMarginFeeBasisPoints
     #[storage(read, write)]
     fn set_fees(
-        vault_: ContractId,
+        vault_storage: ContractId,
         tax_basis_points: u64,
         stable_tax_basis_points: u64,
         mint_burn_basis_points: u64,
@@ -296,8 +302,7 @@ impl Timelock for Contract {
 
         storage.margin_fee_bps.write(margin_fee_basis_points);
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_fees(
+        abi(VaultStorage, vault_storage.into()).set_fees(
             tax_basis_points,
             stable_tax_basis_points,
             mint_burn_basis_points,
@@ -311,11 +316,10 @@ impl Timelock for Contract {
     }
 
     #[storage(read)]
-    fn enable_leverage(vault_: ContractId) {
+    fn enable_leverage(vault_storage_: ContractId) {
         _only_handler_and_above();
 
-        let vault = abi(Vault, vault_.into());
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let vault_storage = abi(VaultStorage, vault_storage_.into());
 
         if storage.should_toggle_is_leverage_enabled.read() {
             vault_storage.set_is_leverage_enabled(true);
@@ -335,11 +339,10 @@ impl Timelock for Contract {
     }
 
     #[storage(read)]
-    fn disable_leverage(vault_: ContractId) {
+    fn disable_leverage(vault_storage_: ContractId) {
         _only_handler_and_above();
 
-        let vault = abi(Vault, vault_.into());
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let vault_storage = abi(VaultStorage, vault_storage_.into());
 
         if storage.should_toggle_is_leverage_enabled.read() {
             vault_storage.set_is_leverage_enabled(false);
@@ -359,22 +362,21 @@ impl Timelock for Contract {
     }
 
     #[storage(read)]
-    fn set_is_leverage_enabled(vault_: ContractId, is_leverage_enabled: bool) {
+    fn set_is_leverage_enabled(vault_storage: ContractId, is_leverage_enabled: bool) {
         _only_handler_and_above();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_is_leverage_enabled(is_leverage_enabled);
+        abi(VaultStorage, vault_storage.into()).set_is_leverage_enabled(is_leverage_enabled);
     }
 
     #[storage(read)]
     fn set_asset_config(
-        vault_: ContractId,
+        vault_storage: ContractId,
         asset: AssetId,
         asset_weight: u64,
         min_profit_bps: u64,
-        max_rusd_amount: u256,
+        max_usdg_amount: u256,
         buffer_amount: u256,
-        rusd_amount: u256,
+        usdg_amount: u256,
     ) {
         _only_keeper_and_above();
 
@@ -383,52 +385,50 @@ impl Timelock for Contract {
             Error::TimelockInvalidMinProfitBps
         );
 
-        let vault = abi(Vault, vault_.into());
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let _vault_storage = abi(VaultStorage, vault_storage.into());
 
         require(
-            vault_storage.is_asset_whitelisted(asset),
+            _vault_storage.is_asset_whitelisted(asset),
             Error::TimelockAssetNotYetWhitelisted
         );
 
 
-        let decimals = vault_storage.get_asset_decimals(asset);
+        let decimals = _vault_storage.get_asset_decimals(asset);
 
-        vault_storage.set_asset_config(
+        _vault_storage.set_asset_config(
             asset,
             decimals,
             asset_weight,
             min_profit_bps,
-            max_rusd_amount,
-            vault_storage.is_stable_asset(asset),
-            vault_storage.is_shortable_asset(asset)
+            max_usdg_amount,
+            _vault_storage.is_stable_asset(asset),
+            _vault_storage.is_shortable_asset(asset)
         );
 
-        vault_storage.set_buffer_amount(asset, buffer_amount);
-        vault_storage.set_rusd_amount(asset, rusd_amount);
+        _vault_storage.set_buffer_amount(asset, buffer_amount);
+        _vault_storage.set_usdg_amount(asset, usdg_amount);
     }
 
     #[storage(read)]
-    fn set_rusd_amounts(
-        vault_: ContractId, 
+    fn set_usdg_amounts(
+        vault_storage: ContractId, 
         assets: Vec<AssetId>,
-        rusd_amounts: Vec<u256>
+        usdg_amounts: Vec<u256>
     ) {
         _only_keeper_and_above();
 
         require(
-            assets.len() == rusd_amounts.len(),
+            assets.len() == usdg_amounts.len(),
             Error::TimelockLengthMismatch
         );
 
-        let vault = abi(Vault, vault_.into());
-        let vault_storage = abi(VaultStorage, vault.get_vault_storage().into());
+        let _vault_storage = abi(VaultStorage, vault_storage.into());
 
         let mut i = 0;
         while i < assets.len() {
-            vault_storage.set_rusd_amount(
+            _vault_storage.set_usdg_amount(
                 assets.get(i).unwrap(),
-                rusd_amounts.get(i).unwrap(),
+                usdg_amounts.get(i).unwrap(),
             );
 
             i += 1;
@@ -436,67 +436,66 @@ impl Timelock for Contract {
     }
 
     #[storage(read)]
-    fn update_rusd_supply(rlp_manager: ContractId, rusd_amount: u256) {
+    fn update_usdg_supply(glp_manager: ContractId, usdg_amount: u256) {
         _only_keeper_and_above();
 
         require(
-            rlp_manager == storage.rlp_manager.read() || 
-                rlp_manager == storage.prev_rlp_manager.read(),
-            Error::TimelockInvalidRlpManager
+            glp_manager == storage.glp_manager.read() || 
+                glp_manager == storage.prev_glp_manager.read(),
+            Error::TimelockInvalidGlpManager
         );
 
-        let rusd = abi(RUSD, abi(RLPManager, rlp_manager.into()).get_rusd().into());
-        let balance = rusd.balance_of(Account::from(rlp_manager)).as_u256();
+        let usdg = abi(USDG, abi(GLPManager, glp_manager.into()).get_usdg().into());
+        let balance = usdg.balance_of(Account::from(glp_manager)).as_u256();
 
-        rusd.add_vault(ContractId::this());
+        usdg.add_vault(contract_id());
 
-        if rusd_amount > balance {
+        if usdg_amount > balance {
             // @TODO: potential revert here
-            let mint_amount = u64::try_from(rusd_amount - balance).unwrap();
-            rusd.mint(Account::from(rlp_manager), mint_amount);
+            let mint_amount = u64::try_from(usdg_amount - balance).unwrap();
+            usdg.mint(Account::from(glp_manager), mint_amount);
         } else {
             // @TODO: potential revert here
-            let burn_amount = u64::try_from(balance - rusd_amount).unwrap();
-            // @TODO: do we need to forward the RUSD to burn?
-            rusd.burn(Account::from(rlp_manager), burn_amount);
+            let burn_amount = u64::try_from(balance - usdg_amount).unwrap();
+            // @TODO: do we need to forward the USDG to burn?
+            usdg.burn(Account::from(glp_manager), burn_amount);
         }
 
-        rusd.remove_vault(ContractId::this());
+        usdg.remove_vault(contract_id());
     }
 
     #[storage(read)]
     fn set_shorts_tracker_avg_price_weight(shorts_tracker_avg_price_weight: u64) {
         _only_gov();
 
-        abi(RLPManager, storage.rlp_manager.read().into()).set_shorts_tracker_avg_price_weight(
+        abi(GLPManager, storage.glp_manager.read().into()).set_shorts_tracker_avg_price_weight(
             shorts_tracker_avg_price_weight
         );
     }
 
     #[storage(read)]
-    fn set_rlp_cooldown_duration(rlp_cooldown_duration: u64) {
+    fn set_glp_cooldown_duration(glp_cooldown_duration: u64) {
         _only_gov();
 
         require(
-            rlp_cooldown_duration < (2 * 24 * 3600), // 2 days,
+            glp_cooldown_duration < (2 * 24 * 3600), // 2 days,
             Error::TimelockInvalidCooldownDuration
         );
 
-        abi(RLPManager, storage.rlp_manager.read().into()).set_cooldown_duration(
-            rlp_cooldown_duration
+        abi(GLPManager, storage.glp_manager.read().into()).set_cooldown_duration(
+            glp_cooldown_duration
         );
     }
 
     #[storage(read)]
     fn set_max_global_short_size(
-        vault_: ContractId,
+        vault_storage: ContractId,
         asset: AssetId,
         amount: u256
     ) {
         _only_gov();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_max_global_short_size(
+        abi(VaultStorage, vault_storage.into()).set_max_global_short_size(
             asset, amount
         );
     }
@@ -516,13 +515,12 @@ impl Timelock for Contract {
 
     #[storage(read)]
     fn set_is_swap_enabled(
-        vault_: ContractId,
+        vault_storage: ContractId,
         is_swap_enabled: bool
     ) {
         _only_gov();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_is_swap_enabled(is_swap_enabled);
+        abi(VaultStorage, vault_storage.into()).set_is_swap_enabled(is_swap_enabled);
     }
 
     #[storage(read)]
@@ -582,16 +580,16 @@ impl Timelock for Contract {
 
     #[storage(read)]
     fn batch_withdraw_fees(
-        vault_: ContractId,
+        vault: ContractId,
         assets: Vec<AssetId>,
     ) {
         _only_keeper_and_above();
 
         let mut i = 0;
-        let vault = abi(Vault, vault_.into());
+        let _vault = abi(Vault, vault.into());
 
         while i < assets.len() {
-            vault.withdraw_fees(assets.get(i).unwrap(), storage.gov.read());
+            _vault.withdraw_fees(assets.get(i).unwrap(), storage.gov.read());
 
             i += 1;
         }
@@ -599,38 +597,35 @@ impl Timelock for Contract {
 
     #[storage(read)]
     fn set_in_private_liquidation_mode(
-        vault_: ContractId,
+        vault_storage: ContractId,
         in_private_liquidation_mode: bool
     ) {
         _only_gov();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_in_private_liquidation_mode(in_private_liquidation_mode);
+        abi(VaultStorage, vault_storage.into()).set_in_private_liquidation_mode(in_private_liquidation_mode);
     }
 
     #[storage(read)]
     fn set_liquidator(
-        vault_: ContractId,
+        vault_storage: ContractId,
         liquidator: Account,
         is_active: bool
     ) {
         _only_gov();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_liquidator(liquidator, is_active);
+        abi(VaultStorage, vault_storage.into()).set_liquidator(liquidator, is_active);
     }
 
     // @TODO: impl for `set_in_private_transfer_mode` for BaseToken
     /*
     #[storage(read, write)]
     fn set_in_private_transfer_mode(
-        vault_: ContractId,
+        vault_storage: ContractId,
         in_private_liquidation_mode: bool
     ) {
         _only_gov();
 
-        let vault = abi(Vault, vault_.into());
-        abi(VaultStorage, vault.get_vault_storage().into()).set_in_private_transfer_mode(in_private_liquidation_mode);
+        abi(VaultStorage, vault_storage.into()).set_in_private_transfer_mode(in_private_liquidation_mode);
     }
     */
 

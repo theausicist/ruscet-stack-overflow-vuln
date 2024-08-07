@@ -43,16 +43,6 @@ abi ReferralStorage {
     fn gov_set_codeowner(code: b256, new_account: Account);
 
     /*
-          ____ __     ___               
-         / / / \ \   / (_) _____      __
-        / / /   \ \ / /| |/ _ \ \ /\ / /
-       / / /     \ V / | |  __/\ V  V / 
-      /_/_/       \_/  |_|\___| \_/\_/  
-    */
-    #[storage(read)]
-    fn get_trader_referral_code(account: Account) -> b256;
-
-    /*
           ____  ____        _     _ _      
          / / / |  _ \ _   _| |__ | (_) ___ 
         / / /  | |_) | | | | '_ \| | |/ __|

@@ -2,9 +2,8 @@
 authors = ["@jasmcaus", "@xburralabs"]
 entry = "main.sw"
 license = "Apache-2.0"
-name = "position-router"
+name = "position_router"
 
 [dependencies]
 helpers = { path = "../../helpers" }
 core_interfaces = { path = "../interfaces" }
-referrals_interfaces = { path = "../../referrals/interfaces" }

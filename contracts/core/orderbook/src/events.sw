@@ -4,23 +4,23 @@ library;
 use helpers::{context::*};
 
 pub struct Initialize {
-    pub router: ContractId,
-    pub vault: ContractId,
-    pub rusd: AssetId,
-    pub min_execution_fee: u64,
-    pub min_purchase_asset_amount_usd: u64
+    router: ContractId,
+    vault: ContractId,
+    usdg: AssetId,
+    min_execution_fee: u64,
+    min_purchase_asset_amount_usd: u64
 }
 
 pub struct UpdateMinExecutionFee {
-    pub min_execution_fee: u64,
+    min_execution_fee: u64,
 }
 
 pub struct UpdateMinPurchaseAssetAmountUsd {
-    pub min_purchase_asset_amount_usd: u64,
+    min_purchase_asset_amount_usd: u64,
 }
 
 pub struct UpdateGov {
-    pub gov: Account,
+    gov: Account,
 }
 
 /*
@@ -31,57 +31,57 @@ pub struct UpdateGov {
 |___|_| |_|\___|_|  \___|\__,_|___/\___|
 */
 pub struct CreateIncreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub purchase_asset: AssetId,
-    pub purchase_asset_amount: u256,
-    pub collateral_asset: AssetId,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    purchase_asset: AssetId,
+    purchase_asset_amount: u256,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct CancelIncreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub purchase_asset: AssetId,
-    pub purchase_asset_amount: u256,
-    pub collateral_asset: AssetId,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    purchase_asset: AssetId,
+    purchase_asset_amount: u256,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct ExecuteIncreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub purchase_asset: AssetId,
-    pub purchase_asset_amount: u256,
-    pub collateral_asset: AssetId,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
-    pub execution_price: u256,
+    account: Address,
+    order_index: u64,
+    purchase_asset: AssetId,
+    purchase_asset_amount: u256,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
+    execution_price: u256,
 }
 
 pub struct UpdateIncreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub collateral_asset: AssetId,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
+    account: Address,
+    order_index: u64,
+    collateral_asset: AssetId,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
 }
 
 /*
@@ -92,55 +92,55 @@ pub struct UpdateIncreaseOrder {
 |____/ \___|\___|_|  \___|\__,_|___/\___|
 */
 pub struct CreateDecreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub collateral_asset: AssetId,
-    pub collateral_delta: u256,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    collateral_asset: AssetId,
+    collateral_delta: u256,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct CancelDecreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub collateral_asset: AssetId,
-    pub collateral_delta: u256,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    collateral_asset: AssetId,
+    collateral_delta: u256,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
 }
 
 pub struct ExecuteDecreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub collateral_asset: AssetId,
-    pub collateral_delta: u256,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
-    pub execution_fee: u64,
-    pub execution_price: u256,
+    account: Address,
+    order_index: u64,
+    collateral_asset: AssetId,
+    collateral_delta: u256,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
+    execution_fee: u64,
+    execution_price: u256,
 }
 
 pub struct UpdateDecreaseOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub collateral_asset: AssetId,
-    pub collateral_delta: u256,
-    pub index_asset: AssetId,
-    pub size_delta: u256,
-    pub is_long: bool,
-    pub trigger_price: u256,
-    pub trigger_above_threshold: bool,
+    account: Address,
+    order_index: u64,
+    collateral_asset: AssetId,
+    collateral_delta: u256,
+    index_asset: AssetId,
+    size_delta: u256,
+    is_long: bool,
+    trigger_price: u256,
+    trigger_above_threshold: bool,
 }
 
 /*
@@ -152,50 +152,50 @@ pub struct UpdateDecreaseOrder {
                    |_|
 */
 pub struct CreateSwapOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub path: Vec<AssetId>,
-    pub amount_in: u64,
-    pub min_out: u64,
-    pub trigger_ratio: u64,
-    pub trigger_above_threshold: bool,
-    pub should_unwrap: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    path: Vec<AssetId>,
+    amount_in: u64,
+    min_out: u64,
+    trigger_ratio: u64,
+    trigger_above_threshold: bool,
+    should_unwrap: bool,
+    execution_fee: u64,
 }
 
 pub struct CancelSwapOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub path: Vec<AssetId>,
-    pub amount_in: u64,
-    pub min_out: u64,
-    pub trigger_ratio: u64,
-    pub trigger_above_threshold: bool,
-    pub should_unwrap: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    path: Vec<AssetId>,
+    amount_in: u64,
+    min_out: u64,
+    trigger_ratio: u64,
+    trigger_above_threshold: bool,
+    should_unwrap: bool,
+    execution_fee: u64,
 }
 
 pub struct UpdateSwapOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub path: Vec<AssetId>,
-    pub amount_in: u64,
-    pub min_out: u64,
-    pub trigger_ratio: u64,
-    pub trigger_above_threshold: bool,
-    pub should_unwrap: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    path: Vec<AssetId>,
+    amount_in: u64,
+    min_out: u64,
+    trigger_ratio: u64,
+    trigger_above_threshold: bool,
+    should_unwrap: bool,
+    execution_fee: u64,
 }
 
 pub struct ExecuteSwapOrder {
-    pub account: Account,
-    pub order_index: u64,
-    pub path: Vec<AssetId>,
-    pub amount_in: u64,
-    pub min_out: u64,
-    pub amount_out: u64,
-    pub trigger_ratio: u64,
-    pub trigger_above_threshold: bool,
-    pub should_unwrap: bool,
-    pub execution_fee: u64,
+    account: Address,
+    order_index: u64,
+    path: Vec<AssetId>,
+    amount_in: u64,
+    min_out: u64,
+    amount_out: u64,
+    trigger_ratio: u64,
+    trigger_above_threshold: bool,
+    should_unwrap: bool,
+    execution_fee: u64,
 }

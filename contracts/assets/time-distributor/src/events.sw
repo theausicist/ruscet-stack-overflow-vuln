@@ -4,17 +4,17 @@ library;
 use helpers::context::*;
 
 pub struct Distribute {
-    pub receiver: Account,
-    pub amount: u64
+    receiver: Account,
+    amount: u64
 }
 
 pub struct DistributionChange {
-    pub receiver: Account,
-    pub amount: u64,
-    pub reward_asset: AssetId
+    receiver: Account,
+    amount: u64,
+    reward_asset: AssetId
 }
 
 pub struct AssetsPerIntervalChange {
-    pub receiver: Account,
-    pub amount: u64
+    receiver: Account,
+    amount: u64
 }

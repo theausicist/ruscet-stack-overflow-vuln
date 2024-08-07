@@ -19,13 +19,6 @@ use helpers::{
 */
 
 abi FungibleAsset {
-    #[storage(read, write)]
-    fn initialize(
-        name: String,
-        symbol: String,
-        decimals: u8
-    );
-
     /*
            ____  ____  ____   ____ ____   ___  
           / / / / ___||  _ \ / ___|___ \ / _ \ 
@@ -34,17 +27,107 @@ abi FungibleAsset {
        /_/_/    |____/|_| \_\\____|_____|\___/                                         
        from: https://github.com/FuelLabs/sway-standards/tree/master/standards/src20-native-asset  
     */
+    /// Returns the total supply of coins for an asset.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to query the total supply.
+    ///
+    /// # Returns
+    ///
+    /// * [Option<u64>] - The total supply of coins for `asset`.
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use src20::SRC20;
+    ///
+    /// fn foo(contract: ContractId, asset: AssetId) {
+    ///     let contract_abi = abi(SRC20, contract);
+    ///     let total_supply = contract_abi.total_supply(asset);
+    ///     assert(total_supply.unwrap() != 0);
+    /// }
+    /// ```
     #[storage(read)]
-    fn name() -> String;
+    fn total_supply(asset_id: AssetId) -> Option<u64>;
 
+    /// Returns the name of the asset, such as “Ether”.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to query the name.
+    ///
+    /// # Returns
+    ///
+    /// * [Option<String>] - The name of `asset`.
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use src20::SRC20;
+    /// use std::string::String;
+    ///
+    /// fn foo(contract: ContractId, asset: AssetId) {
+    ///     let contract_abi = abi(SRC20, contract);
+    ///     let name = contract_abi.name(asset);
+    ///     assert(name.is_some());
+    /// }
+    /// ```
     #[storage(read)]
-    fn symbol() -> String;
+    fn name(asset_id: AssetId) -> Option<String>;
+
+    /// Returns the symbol of the asset, such as “ETH”.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to query the symbol.
+    ///
+    /// # Returns
+    ///
+    /// * [Option<String>] - The symbol of `asset`.
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use src20::SRC20;
+    /// use std::string::String;
+    ///
+    /// fn foo(contract: ContractId, asset: AssetId) {
+    ///     let contract_abi = abi(SRC20, contract);
+    ///     let symbol = contract_abi.symbol(asset);
+    ///     assert(symbol.is_some());
+    /// }
+    /// ```
+    #[storage(read)]
+    fn symbol(asset_id: AssetId) -> Option<String>;
     
+    /// Returns the number of decimals the asset uses.
+    ///
+    /// # Additional Information
+    ///
+    /// e.g. 8, means to divide the coin amount by 100000000 to get its user representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to query the decimals.
+    ///
+    /// # Returns
+    ///
+    /// * [Option<u8>] - The decimal precision used by `asset`.
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use src20::SRC20;
+    ///
+    /// fn foo(contract: ContractId, asset: AssedId) {
+    ///     let contract_abi = abi(SRC20, contract);
+    ///     let decimals = contract_abi.decimals(asset);
+    ///     assert(decimals.unwrap() == 8u8);
+    /// }
+    /// ```
     #[storage(read)]
-    fn decimals() -> u8;
-
-    #[storage(read)]
-    fn total_supply() -> u64;
+    fn decimals(asset_id: AssetId) -> Option<u8>;
 
     /*
            ____  ____  ____   ____ _____ 
@@ -104,6 +187,114 @@ abi FungibleAsset {
     #[payable]
     #[storage(read, write)]
     fn burn(amount: u64);
+
+    /*
+           ____  ____       _   _                
+          / / / / ___|  ___| |_| |_ ___ _ __ ___ 
+         / / /  \___ \ / _ \ __| __/ _ \ '__/ __|
+        / / /    ___) |  __/ |_| ||  __/ |  \__ \
+       /_/_/    |____/ \___|\__|\__\___|_|  |___/
+    */
+    /// Sets the name of an asset.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to set the name.
+    /// * `name`: [String] - The name of the asset.
+    ///
+    /// # Reverts
+    ///
+    /// * When the name has already been set for an asset.
+    ///
+    /// # Number of Storage Accesses
+    ///
+    /// * Reads: `1`
+    /// * Writes: `2`
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use asset::SetAssetAttributes;
+    /// use src20::SRC20;
+    /// use std::string::String;
+    ///
+    /// fn foo(asset_id: AssetId) {
+    ///     let set_abi = abi(SetAssetAttributes, contract_id);
+    ///     let src_20_abi = abi(SRC20, contract_id);
+    ///     let name = String::from_ascii_str("Ether");
+    ///     set_abi.set_name(storage.name, asset, name);
+    ///     assert(src_20_abi.name(asset) == name);
+    /// }
+    /// ```
+    #[storage(write)]
+    fn set_name(asset_id: AssetId, name: String);
+
+    /// Sets the symbol of an asset.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to set the symbol.
+    /// * `symbol`: [String] - The symbol of the asset.
+    ///
+    /// # Reverts
+    ///
+    /// * When the symbol has already been set for an asset.
+    ///
+    /// # Number of Storage Accesses
+    ///
+    /// * Reads: `1`
+    /// * Writes: `2`
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use asset::SetAssetAttributes;
+    /// use src20::SRC20;
+    /// use std::string::String;
+    ///
+    /// fn foo(asset_id: AssetId) {
+    ///     let set_abi = abi(SetAssetAttributes, contract_id);
+    ///     let src_20_abi = abi(SRC20, contract_id);
+    ///     let symbol = String::from_ascii_str("ETH");
+    ///     set_abi.set_symbol(storage.name, asset, symbol);
+    ///     assert(src_20_abi.symbol(asset) == symbol);
+    /// }
+    /// ```
+    #[storage(write)]
+    fn set_symbol(asset_id: AssetId, symbol: String);
+
+    /// Sets the decimals of an asset.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset`: [AssetId] - The asset of which to set the decimals.
+    /// * `decimal`: [u8] - The decimals of the asset.
+    ///
+    /// # Reverts
+    ///
+    /// * When the decimals has already been set for an asset.
+    ///
+    /// # Number of Storage Accesses
+    ///
+    /// * Reads: `1`
+    /// * Writes: `1`
+    ///
+    /// # Examples
+    ///
+    /// ```sway
+    /// use asset::SetAssetAttributes;
+    /// use src20::SRC20;
+    ///
+    /// fn foo(asset_id: AssetId) {
+    ///     let decimals = 8u8;
+    ///     let set_abi = abi(SetAssetAttributes, contract_id);
+    ///     let src_20_abi = abi(SRC20, contract_id);
+    ///     set_abi.set_decimals(asset_id, decimals);
+    ///     assert(src_20_abi.decimals(asset_id) == decimals);
+    /// }
+    /// ```
+    #[storage(write)]
+    fn set_decimals(asset_id: AssetId, decimals: u8);
 
     /*
            ____  ____        _                      

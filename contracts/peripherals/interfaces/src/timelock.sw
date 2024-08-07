@@ -13,8 +13,8 @@ abi Timelock {
         buffer: u64,
         asset_manager: Account,
         mint_receiver: Account,
-        rlp_manager: ContractId,
-        prev_rlp_manager: ContractId,
+        glp_manager: ContractId,
+        prev_glp_manager: ContractId,
         reward_router: ContractId,
         max_asset_supply: u64,
         margin_fee_bps: u64,
@@ -41,7 +41,7 @@ abi Timelock {
     fn set_keeper(keeper: Account, is_active: bool);
 
     #[storage(read)]
-    fn init_rlp_manager();
+    fn init_glp_manager();
 
     #[storage(read, write)]
     fn set_buffer(buffer: u64);
@@ -113,26 +113,26 @@ abi Timelock {
         asset: AssetId,
         asset_weight: u64,
         min_profit_bps: u64,
-        max_rusd_amount: u256,
+        max_usdg_amount: u256,
         buffer_amount: u256,
-        rusd_amount: u256,
+        usdg_amount: u256,
     );
 
     #[storage(read)]
-    fn set_rusd_amounts(
+    fn set_usdg_amounts(
         vault: ContractId, 
         assets: Vec<AssetId>,
-        rusd_amounts: Vec<u256>
+        usdg_amounts: Vec<u256>
     );
 
     #[storage(read)]
-    fn update_rusd_supply(rlp_manager: ContractId, rusd_amount: u256);
+    fn update_usdg_supply(glp_manager: ContractId, usdg_amount: u256);
 
     #[storage(read)]
     fn set_shorts_tracker_avg_price_weight(shorts_tracker_avg_price_weight: u64);
 
     #[storage(read)]
-    fn set_rlp_cooldown_duration(rlp_cooldown_duration: u64);
+    fn set_glp_cooldown_duration(glp_cooldown_duration: u64);
 
     #[storage(read)]
     fn set_max_global_short_size(
